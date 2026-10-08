@@ -22,6 +22,49 @@ export const CATEGORIES = [
 
 export const VAT_RATES = [22, 10, 5, 4, 0];
 
+/**
+ * Voci di soggiorno aggiunte al check-out. Sono prodotti speciali (categoria
+ * "soggiorno", id fissi) salvati nel listino: così le tariffe si modificano
+ * nelle impostazioni e si sincronizzano tra i dispositivi. Non compaiono tra
+ * i pulsanti dell'aggiunta rapida.
+ */
+export const STAY_CATEGORY = 'soggiorno';
+export const STAY_TYPES = {
+  room: { id: 'stay-room', name: 'Conto camera', unit: 'a notte' },
+  pet: { id: 'stay-pet', name: 'Supplemento animale domestico', unit: 'a notte' },
+  tax: { id: 'stay-tax', name: 'Tassa di soggiorno', unit: 'a persona a notte' },
+};
+
+/** Tariffe iniziali (indicative, da verificare): la camera si inserisce al check-out. */
+export function defaultStayProducts() {
+  return [
+    { ...stayBase('room'), price: 0, vat: 10, order: 1001 },
+    { ...stayBase('pet'), price: 1000, vat: 10, order: 1002 },
+    // L'imposta di soggiorno è fuori campo IVA: aliquota 0
+    { ...stayBase('tax'), price: 150, vat: 0, order: 1003 },
+  ];
+}
+function stayBase(type) {
+  const t = STAY_TYPES[type];
+  return { id: t.id, name: t.name, category: STAY_CATEGORY, stay: type, active: true, updatedAt: 0, device: 'iniziale' };
+}
+
+export function isStayLine(line) {
+  return line.category === STAY_CATEGORY;
+}
+
+/** Descrizione della riga di soggiorno, es. "Tassa di soggiorno · 2 persone × 3 notti". */
+export function stayLineName(type, nights, persons = 1) {
+  const n = nights === 1 ? '1 notte' : `${nights} notti`;
+  if (type === 'tax') return `${STAY_TYPES.tax.name} · ${persons === 1 ? '1 persona' : `${persons} persone`} × ${n}`;
+  return `${STAY_TYPES[type].name} · ${n}`;
+}
+
+/** Etichetta dell'aliquota nel riepilogo (lo 0% è la tassa di soggiorno o voci esenti). */
+export function vatLabel(rate) {
+  return rate === 0 ? 'Esente / fuori campo IVA' : `${rate}%`;
+}
+
 /** Finestra entro cui un secondo tocco sullo stesso prodotto aumenta la quantità. */
 export const MERGE_WINDOW_MS = 15 * 60 * 1000;
 
@@ -323,4 +366,60 @@ export function buildCsv(accounts, lines) {
       ];
     });
   return '﻿' + [header, ...rows].map((r) => r.map(csvCell).join(';')).join('\r\n') + '\r\n';
+}
+
+// ---------------------------------------------------------------------------
+// Riepilogo in testo semplice (email / condivisione)
+// ---------------------------------------------------------------------------
+
+/** Periodo coperto dalle righe: "08/10/2026" oppure "dal 05/10/2026 al 08/10/2026". */
+export function periodText(lines) {
+  const active = activeLines(lines);
+  if (!active.length) return '—';
+  const ts = active.map((l) => l.createdAt);
+  const first = Math.min(...ts);
+  const last = Math.max(...ts);
+  return dateKey(first) === dateKey(last) ? formatDate(first) : `dal ${formatDate(first)} al ${formatDate(last)}`;
+}
+
+/**
+ * Riepilogo non fiscale in testo semplice, adatto al corpo di un'email.
+ * Le righe annullate non compaiono; le voci di soggiorno sono elencate per prime.
+ */
+export function buildTextSummary({ hotel, name, guestName, lines, closedAt }) {
+  const active = activeLines(lines);
+  const stay = active.filter(isStayLine);
+  const items = active.filter((l) => !isStayLine(l));
+  const totals = computeTotals(lines);
+  const row = (l) => `- ${l.name}: ${l.qty} × ${formatEuro(l.price)} = ${formatEuro(lineTotal(l))}`;
+  const out = [
+    hotel,
+    'RIEPILOGO NON FISCALE',
+    '',
+    guestName ? `${name} – ${guestName}` : name,
+    `Periodo: ${periodText(lines)}`,
+    `${closedAt ? 'Conto chiuso il' : 'Data'}: ${formatDateTime(closedAt || Date.now())}`,
+  ];
+  if (stay.length) out.push('', 'SOGGIORNO', ...stay.map(row));
+  if (items.length) out.push('', 'CONSUMAZIONI', ...items.map((l) => `${row(l)} (${formatDate(l.createdAt)} ${formatTime(l.createdAt)})`));
+  out.push('', 'IVA');
+  for (const v of totals.vat) {
+    out.push(v.rate === 0
+      ? `- ${vatLabel(0)}: ${formatEuro(v.gross)}`
+      : `- ${v.rate}%: imponibile ${formatEuro(v.net)}, IVA ${formatEuro(v.tax)}, totale ${formatEuro(v.gross)}`);
+  }
+  out.push('', `TOTALE: ${formatEuro(totals.total)}`, '', 'Documento riepilogativo non valido ai fini fiscali. Prezzi IVA inclusa.');
+  // Spazi non separabili di Intl ("12,50 €") → spazi normali, più leggibili nelle app di posta
+  return out.join('\n').replace(/\u00a0|\u202f/g, ' ');
+}
+
+/** Link mailto: con destinatario, oggetto e testo (a capo in formato CRLF). */
+export function mailtoHref(to, subject, body) {
+  const enc = (t) => encodeURIComponent(t).replace(/%0A/g, '%0D%0A');
+  return `mailto:${encodeURIComponent(String(to || '').trim()).replace(/%40/g, '@')}?subject=${enc(subject)}&body=${enc(body)}`;
+}
+
+/** Controllo leggero del formato di un indirizzo email. */
+export function isEmail(text) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(text || '').trim());
 }

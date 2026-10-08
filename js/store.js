@@ -58,6 +58,10 @@ export async function init() {
   } else {
     settingsCache = s;
   }
+  // Aggiornamento dalla versione 1.0: aggiunge le tariffe di soggiorno se mancano.
+  const missing = [];
+  for (const p of M.defaultStayProducts()) if (!(await db.get('products', p.id))) missing.push(p);
+  await db.putMany({ products: missing });
   return settingsCache;
 }
 
@@ -144,13 +148,38 @@ export function setGuestName(locationId, guestName) {
   return updateLocation(locationId, { guestName: String(guestName || '').trim() });
 }
 
+export function setGuestEmail(locationId, guestEmail) {
+  return updateLocation(locationId, { guestEmail: String(guestEmail || '').trim() });
+}
+
 // ---------------------------------------------------------------------------
 // Listino
 // ---------------------------------------------------------------------------
 
+/** Prodotti del bar (le tariffe di soggiorno sono escluse: vedi listStayRates). */
 export async function listProducts({ includeInactive = false } = {}) {
   const all = await db.getAll('products');
-  return all.filter((p) => includeInactive || p.active !== false).sort((a, b) => a.order - b.order);
+  return all
+    .filter((p) => p.category !== M.STAY_CATEGORY && (includeInactive || p.active !== false))
+    .sort((a, b) => a.order - b.order);
+}
+
+/** Tariffe delle voci di soggiorno, indicizzate per tipo: { room, pet, tax }. */
+export async function listStayRates() {
+  const rates = {};
+  for (const [type, t] of Object.entries(M.STAY_TYPES)) rates[type] = await db.get('products', t.id);
+  return rates;
+}
+
+/** Modifica prezzo e IVA di una voce di soggiorno (nome e tipo restano fissi). */
+export async function saveStayRate(type, { price, vat }) {
+  const cur = await db.get('products', M.STAY_TYPES[type].id);
+  if (!cur) throw new Error('Voce di soggiorno non trovata');
+  if (!Number.isInteger(price) || price < 0) throw new Error('Prezzo non valido.');
+  if (!M.VAT_RATES.includes(vat)) throw new Error('Aliquota IVA non valida.');
+  const rec = M.stamp({ ...cur, price, vat }, device());
+  await db.put('products', rec);
+  return rec;
 }
 
 /** Crea o modifica un prodotto. I prodotti eliminati restano come "non attivi". */
@@ -234,6 +263,30 @@ export const addConsumption = serial(async (locationId, productId, now = Date.no
   return { line, merged: !!recent };
 });
 
+/**
+ * Aggiunge al conto una voce di soggiorno (conto camera, animale, tassa).
+ * Quantità = notti (per la tassa: persone × notti); prezzo unitario e IVA
+ * vengono copiati nella riga come per le consumazioni.
+ * @param {'room'|'pet'|'tax'} type
+ */
+export const addStayCharge = serial(async (locationId, type, { nights, persons = 1, price, vat }) => {
+  const t = M.STAY_TYPES[type];
+  if (!t) throw new Error('Voce di soggiorno non valida');
+  if (!Number.isInteger(nights) || nights < 1) throw new Error('Indica il numero di notti.');
+  if (type === 'tax' && (!Number.isInteger(persons) || persons < 1)) throw new Error('Indica il numero di persone.');
+  if (!Number.isInteger(price) || price <= 0) throw new Error('Indica un importo maggiore di zero.');
+  if (!M.VAT_RATES.includes(vat)) throw new Error('Aliquota IVA non valida.');
+  const now = Date.now();
+  const line = M.stamp({
+    id: M.uuid(), locationId, accountId: null,
+    productId: t.id, name: M.stayLineName(type, nights, persons), category: M.STAY_CATEGORY,
+    price, vat, qty: type === 'tax' ? nights * persons : nights,
+    createdAt: now, cancelled: false, cancelledAt: null,
+  }, device(), now);
+  await db.put('consumptions', line);
+  return line;
+});
+
 /** Diminuisce di 1 la quantità; se era 1 la riga viene annullata. */
 export const decrementLine = serial(async (id) => {
   const cur = await db.get('consumptions', id);
@@ -273,6 +326,7 @@ export const closeAccount = serial(async (locationId) => {
     locationId,
     locationName: M.locationName(loc),
     guestName: loc.guestName || '',
+    guestEmail: loc.guestEmail || '',
     openedAt: lines[0].createdAt,
     closedAt: now,
     closedBy: device(),
@@ -282,7 +336,7 @@ export const closeAccount = serial(async (locationId) => {
   await db.putMany({
     accounts: [account],
     consumptions: lines.map((l) => M.stamp({ ...l, accountId: account.id }, device(), now)),
-    locations: [M.stamp({ ...loc, guestName: '' }, device(), now)],
+    locations: [M.stamp({ ...loc, guestName: '', guestEmail: '' }, device(), now)],
   });
   return account;
 });

@@ -13,6 +13,8 @@ App web (PWA) per registrare le consumazioni addebitate alle camere dell'**Hotel
 - **Griglia camere**: 30 camere (1–30) e 10 postazioni extra (E1–E10) per i clienti senza camera. Le caselle con consumazioni diventano verdi (camere) o azzurre (postazioni extra) e mostrano il totale aperto.
 - **Dettaglio camera**: nome ospite (facoltativo), prodotti divisi per categoria. Un tocco aggiunge il prodotto, un altro tocco aumenta la quantità. Ogni riga ha data, ora e dispositivo. Una riga sbagliata si può **annullare**: resta visibile come "annullata" e non viene addebitata.
 - **Riepilogo check-out**: schermata pulita da mostrare al cliente, con dettaglio, totali per aliquota IVA e totale generale. "Stampa / salva PDF" (dicitura *Riepilogo non fiscale*) e "Chiudi conto", che archivia le consumazioni e libera la camera.
+- **Voci di soggiorno al check-out** (solo camere): conto camera, supplemento animale domestico e tassa di soggiorno. Si indicano notti e persone, l'importo proposto si può cambiare conto per conto. Nel riepilogo compaiono in una sezione "Soggiorno" prima delle consumazioni; la tassa è indicata come *fuori campo IVA*.
+- **Invio per email** del riepilogo: si apre l'app di posta del telefono con indirizzo, oggetto e testo già compilati, e si invia dal proprio account. Nessun server di posta. In alternativa **Condividi…** (WhatsApp, Gmail…), dove il telefono lo permette.
 - **Storico** dei conti chiusi, filtrabile per data, con esportazione CSV.
 - **Impostazioni**: listino (nome, prezzo, categoria, IVA), nomi delle camere e postazioni, nome del dispositivo, PIN facoltativo.
 - **Dati**: esportazione/importazione per la sincronizzazione via Drive, CSV per Excel e avviso se l'ultima esportazione è più vecchia di 24 ore.
@@ -31,7 +33,7 @@ Serve solo il repository su GitHub: non c'è niente da compilare né da installa
 
 GitHub Pages usa HTTPS, che è necessario per l'installazione e per il funzionamento offline.
 
-**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.0.0'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
+**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.1.0'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
 
 **Provare in locale** (facoltativo, per chi sviluppa): da questa cartella, con un qualsiasi server statico, ad esempio
 `python3 -m http.server 8000` e poi apri `http://localhost:8000`.
@@ -101,7 +103,8 @@ In **Dati** (o in **Storico**) scegli il periodo e tocca **Esporta CSV**. Il fil
 |---|---|
 | Addebitare una consumazione | **Camere** → tocca la camera → tocca il prodotto (di nuovo per aumentare la quantità) |
 | Correggere un errore appena fatto | **Annulla** nel messaggio in basso, oppure **−1** / **Annulla** sulla riga |
-| Fare il check-out | Camera → **Check-out** → mostra il riepilogo → **Stampa / salva PDF** → **Chiudi conto** |
+| Fare il check-out | Camera → **Check-out** → aggiungi le voci di soggiorno → mostra il riepilogo → **Stampa / salva PDF** o **Invia per email** → **Chiudi conto** |
+| Mandare di nuovo un riepilogo | **Storico** → tocca il conto → **Invia per email** |
 | Rivedere un conto chiuso | **Storico** → scegli le date → tocca il conto |
 | Cambiare prezzi o prodotti | **Impostazioni** → Listino |
 
@@ -109,7 +112,11 @@ Un secondo tocco sullo stesso prodotto aumenta la quantità della riga se la rig
 
 **PIN** (facoltativo, in Impostazioni): se impostato, viene chiesto per chiudere un conto, importare dati e aprire le impostazioni. È un deterrente per l'uso quotidiano, non una protezione forte: chi ha in mano il dispositivo sbloccato può comunque accedere ai dati del browser.
 
-**IVA**: il listino di esempio usa il 10% per la somministrazione e il 22% per gli articoli vari. Sono valori **indicativi**: verificare le aliquote corrette con il commercialista. I prezzi sono IVA inclusa; imponibile e imposta sono calcolati per scorporo sul totale di ciascuna aliquota.
+**Voci di soggiorno**: nel check-out di una camera, nel riquadro *Voci di soggiorno*, scrivi le **notti** e le **persone soggette a tassa**, controlla l'importo e tocca **Aggiungi** sulla voce. Il conto camera non ha un prezzo predefinito: va scritto ogni volta. Supplemento animale (10,00 € a notte) e tassa di soggiorno (1,50 € a persona a notte) hanno tariffe di esempio, da adattare in **Impostazioni → Voci di soggiorno**: valgono per tutti i dispositivi dopo la sincronizzazione. Una voce sbagliata si toglie con **Annulla**. La tassa di soggiorno si calcola su persone × notti come indicato: esenzioni (es. minori) e limiti di notti vanno considerati inserendo il numero corretto.
+
+**Email**: **Invia per email** chiede l'indirizzo dell'ospite (viene ricordato per quel conto) e apre l'app di posta con il riepilogo nel testo del messaggio. Per allegare il PDF: prima **Stampa / salva PDF**, poi allegalo a mano. Se sul telefono non è configurata un'app di posta, il pulsante non apre nulla: usa **Condividi…**.
+
+**IVA**: il listino di esempio usa il 10% per la somministrazione e il 22% per gli articoli vari. Sono valori **indicativi**: verificare le aliquote corrette con il commercialista (anche per conto camera e supplemento animale, preimpostati al 10%). I prezzi sono IVA inclusa; imponibile e imposta sono calcolati per scorporo sul totale di ciascuna aliquota.
 
 Il riepilogo **non è un documento fiscale**: scontrino o fattura vanno emessi con gli strumenti abituali dell'hotel.
 
@@ -139,9 +146,9 @@ tests/model.test.mjs   test della logica (node --test)
 | Archivio | Contenuto |
 |---|---|
 | `locations` | camere e postazioni: `kind` (`camera`/`extra`), `label`, `guestName`, `active` |
-| `products` | listino: `name`, `price`, `category`, `vat`, `active` (i prodotti eliminati restano disattivati, così la sincronizzazione funziona) |
+| `products` | listino: `name`, `price`, `category`, `vat`, `active` (i prodotti eliminati restano disattivati, così la sincronizzazione funziona). Le tariffe di soggiorno sono prodotti con categoria `soggiorno` e id fissi `stay-room`, `stay-pet`, `stay-tax` |
 | `consumptions` | righe addebitate: copia di nome/prezzo/IVA, `qty`, `createdAt`, `cancelled`, `accountId` (`null` finché il conto è aperto) |
-| `accounts` | conti chiusi: `locationName`, `guestName`, `closedAt`, `total` |
+| `accounts` | conti chiusi: `locationName`, `guestName`, `guestEmail`, `closedAt`, `total` |
 | `meta` | impostazioni locali del dispositivo (non esportate) |
 
 Camere, postazioni e prodotti iniziali hanno id fissi (`R1`…`R30`, `E1`…`E10`, `p001`…), così dispositivi inizializzati separatamente non creano doppioni alla prima sincronizzazione.

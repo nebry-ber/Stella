@@ -270,6 +270,28 @@ table.simple th, table.simple td { padding: 6px 4px; border-bottom: 1px solid va
 .receipt-total strong { font-size: 28px; }
 .receipt-foot { margin: 14px 0 0; font-size: 12px; color: var(--muted); text-align: center; }
 
+/* Gruppi nel riepilogo (Soggiorno / Consumazioni) */
+.receipt .group-row th { padding-top: 14px; border-bottom: 1px solid var(--line); color: var(--meadow-dark); }
+
+/* ---------- Voci di soggiorno (check-out, solo per il personale) ---------- */
+.stay-card { border: 1.5px solid var(--sky-low); }
+.stay-qty { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.stay-qty .field { min-width: 0; }
+.stay-qty input { min-width: 0; }
+.stay-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 96px auto; align-items: center; gap: 8px;
+  padding: 10px 0; border-top: 1px solid var(--line);
+}
+.stay-label { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.stay-label .muted { font-size: 13px; }
+.stay-row input {
+  min-height: 44px; width: 100%; padding: 0 10px; border-radius: 10px; border: 1.5px solid var(--line);
+  text-align: right; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.stay-row input:focus { outline: 3px solid var(--sky-mid); border-color: var(--sky-top); }
+.stay-added { margin-top: 8px; }
+.stay-added .line { background: var(--meadow-pale); box-shadow: none; }
+
 /* ---------- Tab bar ---------- */
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;

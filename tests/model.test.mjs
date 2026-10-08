@@ -88,3 +88,38 @@ test('dati iniziali: 30 camere, 10 extra, id stabili', () => {
   assert.equal(l.filter((x) => x.kind === 'extra').length, 10);
   assert.equal(new Set(M.defaultProducts().map((p) => p.id)).size, M.defaultProducts().length);
 });
+
+test('voci di soggiorno: descrizione, IVA fuori campo, tariffe con id fissi', () => {
+  assert.equal(M.stayLineName('room', 3), 'Conto camera · 3 notti');
+  assert.equal(M.stayLineName('pet', 1), 'Supplemento animale domestico · 1 notte');
+  assert.equal(M.stayLineName('tax', 2, 3), 'Tassa di soggiorno · 3 persone × 2 notti');
+  assert.equal(M.vatLabel(0), 'Esente / fuori campo IVA');
+  assert.equal(M.vatLabel(10), '10%');
+  const ids = M.defaultStayProducts().map((p) => p.id);
+  assert.deepEqual(ids, ['stay-room', 'stay-pet', 'stay-tax']);
+  assert.ok(M.defaultStayProducts().every((p) => p.category === M.STAY_CATEGORY));
+});
+
+test('riepilogo testuale per email: soggiorno prima, annullate escluse, totali IVA', () => {
+  const ts = new Date(2026, 9, 8, 9, 5).getTime();
+  const lines = [
+    line({ name: 'Caffè', price: 150, qty: 2, createdAt: ts }),
+    line({ name: 'Conto camera · 2 notti', category: 'soggiorno', price: 10000, qty: 2, createdAt: ts + 1 }),
+    line({ name: 'Tassa di soggiorno · 2 persone × 2 notti', category: 'soggiorno', price: 150, qty: 4, vat: 0, createdAt: ts + 2 }),
+    line({ name: 'Spritz', price: 600, cancelled: true, createdAt: ts }),
+  ];
+  const t = M.buildTextSummary({ hotel: 'Hotel Bucaneve', name: 'Camera 5', guestName: 'Rossi', lines, closedAt: ts });
+  assert.ok(t.indexOf('SOGGIORNO') < t.indexOf('CONSUMAZIONI'));
+  assert.ok(t.includes('- Conto camera · 2 notti: 2 × 100,00 € = 200,00 €'));
+  assert.ok(t.includes('- Esente / fuori campo IVA: 6,00 €'));
+  assert.ok(t.includes('TOTALE: 209,00 €'));
+  assert.ok(!t.includes('Spritz'));
+  assert.ok(!/[  ]/.test(t));
+});
+
+test('mailto: destinatario, oggetto e a capo codificati', () => {
+  const h = M.mailtoHref('ospite@esempio.it', 'Riepilogo Camera 5', 'riga 1\nriga 2 & più');
+  assert.equal(h, 'mailto:ospite@esempio.it?subject=Riepilogo%20Camera%205&body=riga%201%0D%0Ariga%202%20%26%20pi%C3%B9');
+  assert.ok(M.isEmail('a.b@c.it'));
+  assert.ok(!M.isEmail('a@b'));
+});

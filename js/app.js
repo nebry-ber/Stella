@@ -10,7 +10,7 @@
 import * as S from './store.js';
 import * as M from './model.js';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const UNLOCK_MS = 5 * 60 * 1000; // dopo il PIN, impostazioni sbloccate per 5 minuti
 
 const $view = document.getElementById('view');
@@ -27,7 +27,10 @@ const ui = {
   csv: { from: M.dateKey(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), to: M.dateKey(Date.now()) },
   importResult: null,
   pendingToast: null, // avviso da mostrare dopo il prossimo cambio di schermata
+  stay: { loc: null, nights: 1, persons: 1, prices: {} }, // campi del riquadro "Voci di soggiorno"
 };
+
+const HOTEL = 'Hotel Bucaneve – Ronzone (TN)';
 
 // ---------------------------------------------------------------------------
 // Utilità
@@ -264,7 +267,7 @@ async function renderLocation(id) {
         ${l.cancelled
           ? `<span class="tag">annullata ${M.formatTime(l.cancelledAt)}</span>`
           : `<span class="line-actions">
-              <button type="button" class="btn btn-small btn-ghost" data-action="decrement" data-id="${esc(l.id)}" aria-label="Togli uno">−1</button>
+              ${M.isStayLine(l) ? '' : `<button type="button" class="btn btn-small btn-ghost" data-action="decrement" data-id="${esc(l.id)}" aria-label="Togli uno">−1</button>`}
               <button type="button" class="btn btn-small btn-ghost danger" data-action="cancel-line" data-id="${esc(l.id)}">Annulla</button>
             </span>`}
       </div>
@@ -293,9 +296,18 @@ async function renderLocation(id) {
 function receiptHtml({ name, guestName, lines, closedAt }) {
   const active = M.activeLines(lines);
   const totals = M.computeTotals(lines);
-  const first = active[0]?.createdAt;
-  const last = active[active.length - 1]?.createdAt;
-  const period = first ? (M.dateKey(first) === M.dateKey(last) ? M.formatDate(first) : `dal ${M.formatDate(first)} al ${M.formatDate(last)}`) : '—';
+  const period = M.periodText(lines);
+  const stay = active.filter(M.isStayLine);
+  const items = active.filter((l) => !M.isStayLine(l));
+  const row = (l, withDate) => `
+            <tr>
+              <td><div>${esc(l.name)}</div>${withDate ? `<div class="muted">${M.formatDate(l.createdAt)} ${M.formatTime(l.createdAt)}</div>` : ''}</td>
+              <td class="num">${l.qty} × ${euro(l.price)}</td>
+              <td class="num">${euro(M.lineTotal(l))}</td>
+            </tr>`;
+  // Le voci di soggiorno vanno in testa; il titolo "Consumazioni" serve solo se ci sono entrambe
+  const group = (title, list, withDate) => (list.length
+    ? `${title ? `<tr class="group-row"><th colspan="3">${title}</th></tr>` : ''}${list.map((l) => row(l, withDate)).join('')}` : '');
   return `
     <article class="receipt" id="receipt">
       <header class="receipt-head">
@@ -310,20 +322,17 @@ function receiptHtml({ name, guestName, lines, closedAt }) {
         <div><dt>${closedAt ? 'Conto chiuso il' : 'Data'}</dt><dd>${M.formatDateTime(closedAt || Date.now())}</dd></div>
       </dl>
       <table class="receipt-items">
-        <thead><tr><th>Prodotto</th><th class="num">Q.tà</th><th class="num">Importo</th></tr></thead>
+        <thead><tr><th>Voce</th><th class="num">Q.tà</th><th class="num">Importo</th></tr></thead>
         <tbody>
-          ${active.map((l) => `
-            <tr>
-              <td><div>${esc(l.name)}</div><div class="muted">${M.formatDate(l.createdAt)} ${M.formatTime(l.createdAt)}</div></td>
-              <td class="num">${l.qty} × ${euro(l.price)}</td>
-              <td class="num">${euro(M.lineTotal(l))}</td>
-            </tr>`).join('') || '<tr><td colspan="3" class="muted">Nessuna consumazione</td></tr>'}
+          ${group('Soggiorno', stay, false)}
+          ${group(stay.length ? 'Consumazioni' : '', items, true)}
+          ${active.length ? '' : '<tr><td colspan="3" class="muted">Nessuna voce</td></tr>'}
         </tbody>
       </table>
       <table class="receipt-vat">
         <thead><tr><th>Aliquota IVA</th><th class="num">Imponibile</th><th class="num">IVA</th><th class="num">Totale</th></tr></thead>
         <tbody>
-          ${totals.vat.map((v) => `<tr><td>${v.rate}%</td><td class="num">${euro(v.net)}</td><td class="num">${euro(v.tax)}</td><td class="num">${euro(v.gross)}</td></tr>`).join('')}
+          ${totals.vat.map((v) => `<tr><td>${M.vatLabel(v.rate)}</td><td class="num">${euro(v.net)}</td><td class="num">${euro(v.tax)}</td><td class="num">${euro(v.gross)}</td></tr>`).join('')}
         </tbody>
       </table>
       <div class="receipt-total"><span>Totale</span><strong data-testid="grand-total">${euro(totals.total)}</strong></div>
@@ -331,13 +340,55 @@ function receiptHtml({ name, guestName, lines, closedAt }) {
     </article>`;
 }
 
+/** Riquadro per il personale: aggiunge conto camera, animale e tassa di soggiorno. */
+function stayCardHtml(locId, lines, rates) {
+  const st = ui.stay;
+  if (st.loc !== locId) Object.assign(st, { loc: locId, nights: 1, persons: 1, prices: {} });
+  const added = M.activeLines(lines).filter(M.isStayLine);
+  const row = (type) => {
+    const r = rates[type];
+    if (!r || r.active === false) return '';
+    const price = st.prices[type] ?? (r.price ? M.formatDecimal(r.price) : '');
+    return `
+      <div class="stay-row">
+        <div class="stay-label"><strong>${esc(r.name)}</strong><span class="muted">€ ${M.STAY_TYPES[type].unit} · ${r.vat === 0 ? 'fuori campo IVA' : `IVA ${r.vat}%`}</span></div>
+        <input type="text" inputmode="decimal" id="stay-price-${type}" data-change="stay-price" data-type="${type}" value="${esc(price)}" placeholder="0,00" aria-label="${esc(r.name)}, euro ${M.STAY_TYPES[type].unit}">
+        <button type="button" class="btn btn-small btn-primary" data-action="add-stay" data-type="${type}" data-id="${esc(locId)}">Aggiungi</button>
+      </div>`;
+  };
+  return `
+    <section class="card no-print stay-card">
+      <h2 class="section-title">Voci di soggiorno <small>per il personale</small></h2>
+      <div class="stay-qty">
+        <label class="field"><span>Notti</span><input type="number" id="stay-nights" inputmode="numeric" min="1" max="365" data-change="stay-nights" value="${st.nights}"></label>
+        <label class="field"><span>Persone soggette a tassa</span><input type="number" id="stay-persons" inputmode="numeric" min="1" max="50" data-change="stay-persons" value="${st.persons}"></label>
+      </div>
+      ${row('room')}${row('pet')}${row('tax')}
+      ${added.length ? `<ul class="lines stay-added">${added.map((l) => `
+        <li class="line"><div class="line-main"><span class="line-name">${esc(l.name)}</span><span class="line-total">${euro(M.lineTotal(l))}</span></div>
+          <div class="line-meta"><span>${l.qty} × ${euro(l.price)}</span>
+          <button type="button" class="btn btn-small btn-ghost danger" data-action="cancel-line" data-id="${esc(l.id)}">Annulla</button></div></li>`).join('')}</ul>` : ''}
+    </section>`;
+}
+
+/** Pulsanti per inviare il riepilogo: email (app di posta del telefono) e condivisione. */
+function sendButtonsHtml(source, id) {
+  return `
+    <div class="actions no-print">
+      <button type="button" class="btn btn-secondary" data-action="email-summary" data-source="${source}" data-id="${esc(id)}">Invia per email</button>
+      ${navigator.share ? `<button type="button" class="btn btn-ghost" data-action="share-summary" data-source="${source}" data-id="${esc(id)}">Condividi…</button>` : ''}
+    </div>`;
+}
+
 async function renderCheckout(id) {
   const loc = await S.getLocation(id);
   if (!loc) return renderNotFound();
-  const lines = await S.openLines(id);
+  const [lines, rates] = await Promise.all([S.openLines(id), S.listStayRates()]);
   setHeader('Riepilogo check-out', M.locationName(loc), `#/loc/${id}`);
   $view.innerHTML = `
+    ${loc.kind === 'camera' ? stayCardHtml(id, lines, rates) : ''}
     ${receiptHtml({ name: M.locationName(loc), guestName: loc.guestName, lines })}
+    ${lines.length ? sendButtonsHtml('open', id) : ''}
     <div class="sticky-bar no-print">
       <button type="button" class="btn btn-secondary" data-action="print" data-title="Riepilogo ${esc(M.locationName(loc))}">Stampa / salva PDF</button>
       <button type="button" class="btn btn-primary" data-action="close-account" data-id="${esc(id)}" ${lines.length ? '' : 'disabled'}>Chiudi conto</button>
@@ -396,6 +447,7 @@ async function renderAccount(id) {
     <div class="actions no-print">
       <button type="button" class="btn btn-secondary" data-action="print" data-title="Riepilogo ${esc(acc.locationName)} ${M.dateKey(acc.closedAt)}">Stampa / salva PDF</button>
     </div>
+    ${sendButtonsHtml('closed', id)}
     <p class="muted no-print center">Chiuso da: ${esc(acc.closedBy || acc.device)}</p>
     ${cancelled.length ? `
       <section class="card no-print">
@@ -524,8 +576,8 @@ async function renderSettings() {
     return;
   }
   const settings = S.getSettings();
-  const [products, locs, open] = await Promise.all([
-    S.listProducts({ includeInactive: true }), S.listLocations({ includeInactive: true }), S.openSummary(),
+  const [products, locs, open, stayRates] = await Promise.all([
+    S.listProducts({ includeInactive: true }), S.listLocations({ includeInactive: true }), S.openSummary(), S.listStayRates(),
   ]);
   const active = products.filter((p) => p.active !== false);
   const inactive = products.filter((p) => p.active === false);
@@ -573,6 +625,16 @@ async function renderSettings() {
       ${listino}
       ${inactive.length ? `<details><summary>Prodotti disattivati (${inactive.length})</summary><ul class="list">${inactive.map((p) => `
         <li><button type="button" class="list-item" data-action="edit-product" data-id="${esc(p.id)}"><div>${esc(p.name)}</div><div class="list-amt">${euro(p.price)}</div></button></li>`).join('')}</ul></details>` : ''}
+    </section>
+
+    <section class="card">
+      <h2 class="section-title">Voci di soggiorno</h2>
+      <p class="muted">Tariffe proposte nel check-out delle camere (modificabili anche lì, conto per conto).</p>
+      <ul class="list">${Object.entries(stayRates).map(([type, r]) => r ? `
+        <li><button type="button" class="list-item" data-action="edit-stay" data-type="${type}">
+          <div>${esc(r.name)}<div class="muted">€ ${M.STAY_TYPES[type].unit} · ${r.vat === 0 ? 'fuori campo IVA' : `IVA ${r.vat}%`}</div></div>
+          <div class="list-amt">${r.price ? euro(r.price) : 'al check-out'}</div>
+        </button></li>` : '').join('')}</ul>
     </section>
 
     <section class="card">
@@ -625,6 +687,26 @@ async function editProduct(id) {
     toast('Listino aggiornato');
   }
   render();
+}
+
+/** Dati per email/condivisione, dal conto aperto di una postazione o da un conto chiuso. */
+async function summaryData(source, id) {
+  let name; let guestName; let email; let lines; let closedAt;
+  if (source === 'open') {
+    const loc = await S.getLocation(id);
+    ({ guestName, guestEmail: email } = loc);
+    name = M.locationName(loc);
+    lines = await S.openLines(id);
+  } else {
+    const acc = await S.getAccount(id);
+    ({ locationName: name, guestName, guestEmail: email, closedAt } = acc);
+    lines = await S.accountLines(id);
+  }
+  return {
+    email: email || '',
+    subject: `Riepilogo ${name} – Hotel Bucaneve`,
+    text: M.buildTextSummary({ hotel: HOTEL, name, guestName, lines, closedAt }),
+  };
 }
 
 function renderNotFound() {
@@ -681,6 +763,71 @@ const actions = {
     const acc = await S.closeAccount(id);
     ui.pendingToast = [`Conto chiuso: ${acc.locationName} · ${euro(acc.total)}`, { ms: 5000 }];
     go('#/');
+  },
+
+  'add-stay': async (el) => {
+    const type = el.dataset.type;
+    const rates = await S.listStayRates();
+    const price = M.parseEuro(document.getElementById(`stay-price-${type}`).value);
+    if (Number.isNaN(price) || price <= 0) {
+      toast('Inserisci l\'importo (es. 120,00).', { kind: 'error' });
+      document.getElementById(`stay-price-${type}`).focus();
+      return;
+    }
+    const nights = Number(document.getElementById('stay-nights').value);
+    const persons = Number(document.getElementById('stay-persons').value);
+    const line = await S.addStayCharge(el.dataset.id, type, { nights, persons, price, vat: rates[type].vat });
+    toast(`${line.name}: ${euro(M.lineTotal(line))}`);
+    render();
+  },
+
+  'edit-stay': async (el) => {
+    const type = el.dataset.type;
+    const r = (await S.listStayRates())[type];
+    const res = await openModal({
+      title: r.name,
+      html: `
+        <label class="field"><span>Importo € ${M.STAY_TYPES[type].unit}${type === 'room' ? ' (vuoto = da inserire al check-out)' : ''}</span>
+          <input name="price" type="text" inputmode="decimal" value="${r.price ? esc(M.formatDecimal(r.price)) : ''}" placeholder="0,00"></label>
+        <label class="field"><span>Aliquota IVA</span><select name="vat">${M.VAT_RATES.map((v) => `<option value="${v}" ${v === r.vat ? 'selected' : ''}>${esc(M.vatLabel(v))}</option>`).join('')}</select></label>`,
+      buttons: [{ label: 'Annulla', value: 'cancel', cls: 'btn-ghost' }, { label: 'Salva', value: 'save', cls: 'btn-primary' }],
+      validate: (_v, d) => (d.price.trim() === '' || !Number.isNaN(M.parseEuro(d.price)) ? null : 'Importo non valido (es. 1,50).'),
+    });
+    if (!res) return;
+    const price = res.data.price.trim() === '' ? 0 : M.parseEuro(res.data.price);
+    await S.saveStayRate(type, { price, vat: Number(res.data.vat) });
+    toast('Tariffa aggiornata');
+    render();
+  },
+
+  'email-summary': async (el) => {
+    const data = await summaryData(el.dataset.source, el.dataset.id);
+    const res = await openModal({
+      title: 'Invia il riepilogo per email',
+      html: `
+        <p>Si apre l'app di posta del telefono con il riepilogo già scritto: controlla e premi Invia.</p>
+        <label class="field"><span>Email dell'ospite</span>
+          <input name="email" type="email" inputmode="email" autocomplete="off" autocapitalize="off" value="${esc(data.email)}" placeholder="nome@esempio.it"></label>`,
+      buttons: [{ label: 'Annulla', value: 'cancel', cls: 'btn-ghost' }, { label: 'Apri email', value: 'ok', cls: 'btn-primary' }],
+      validate: (_v, d) => (!d.email.trim() || M.isEmail(d.email) ? null : 'Indirizzo email non valido.'),
+    });
+    if (!res) return;
+    const email = res.data.email.trim();
+    if (el.dataset.source === 'open' && email !== data.email) await S.setGuestEmail(el.dataset.id, email);
+    const a = document.createElement('a');
+    a.href = M.mailtoHref(email, data.subject, data.text);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  },
+
+  'share-summary': async (el) => {
+    const data = await summaryData(el.dataset.source, el.dataset.id);
+    try {
+      await navigator.share({ title: data.subject, text: data.text });
+    } catch (e) {
+      if (e.name !== 'AbortError') throw e;
+    }
   },
 
   'hist-range': (el) => { setRange(ui.history, Number(el.dataset.days)); render(); },
@@ -766,6 +913,9 @@ const actions = {
 
 /** Gestori dei campi modificabili (evento "change"). */
 const changes = {
+  'stay-nights': (el) => { ui.stay.nights = Math.max(1, parseInt(el.value, 10) || 1); el.value = ui.stay.nights; },
+  'stay-persons': (el) => { ui.stay.persons = Math.max(1, parseInt(el.value, 10) || 1); el.value = ui.stay.persons; },
+  'stay-price': (el) => { ui.stay.prices[el.dataset.type] = el.value; },
   guest: async (el) => { await S.setGuestName(el.dataset.id, el.value); render(); },
   'hist-from': (el) => { ui.history.from = el.value || ui.history.from; render(); },
   'hist-to': (el) => { ui.history.to = el.value || ui.history.to; render(); },
