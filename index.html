@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Bucaneve · Consumazioni</title>
+  <meta name="description" content="Registro delle consumazioni addebitate alle camere">
+  <meta name="theme-color" content="#3f86c4">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Bucaneve">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <!-- Intestazione: cielo, montagne innevate e prato -->
+  <header class="app-header">
+    <svg class="landscape" viewBox="0 0 400 90" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+      <polygon class="mnt-far" points="0,72 40,40 70,58 120,18 165,55 205,30 250,62 300,22 345,52 400,34 400,90 0,90"/>
+      <polygon class="snow" points="108,29 120,18 132,30 125,27 119,32 114,27"/>
+      <polygon class="snow" points="290,31 300,22 311,32 304,30 299,35 295,30"/>
+      <polygon class="snow" points="198,36 205,30 213,37 207,35 203,38"/>
+      <polygon class="mnt-near" points="0,80 55,58 95,72 150,48 210,74 260,56 320,76 370,60 400,70 400,90 0,90"/>
+      <path class="meadow" d="M0,84 C80,74 160,88 240,80 C310,73 360,84 400,79 L400,90 L0,90 Z"/>
+    </svg>
+    <div class="header-row">
+      <button class="hdr-back" id="btn-back" data-action="back" aria-label="Indietro" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <div class="brand">
+        <svg class="flower" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 23C8 16 9.5 9 14.5 5.2" fill="none" stroke="#c9e8a8" stroke-width="1.6" stroke-linecap="round"/><path d="M8 23C5.5 18 5.6 13 7.2 9.5C8.2 14 8.8 18 8 23Z" fill="#c9e8a8"/><ellipse cx="15" cy="5.6" rx="1.5" ry="1.1" fill="#c9e8a8"/><ellipse cx="12.9" cy="11" rx="2" ry="4.6" transform="rotate(22 12.9 11)" fill="#fbfdff"/><ellipse cx="17.1" cy="11" rx="2" ry="4.6" transform="rotate(-22 17.1 11)" fill="#fbfdff"/><ellipse cx="15" cy="11.6" rx="2.2" ry="5" fill="#fbfdff"/><path d="M14 15.8Q15 17.2 16 15.8" fill="none" stroke="#4f8f32" stroke-width="1"/></svg>
+        <div>
+          <h1 id="page-title">Bucaneve</h1>
+          <p class="subtitle" id="page-subtitle">Ronzone · Val di Non</p>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div id="update-bar" class="update-bar" hidden>
+    È disponibile una nuova versione dell'app.
+    <button class="btn btn-small" data-action="apply-update">Aggiorna</button>
+  </div>
+
+  <main id="view" class="view" tabindex="-1">
+    <p class="loading">Caricamento…</p>
+  </main>
+
+  <!-- Barra di navigazione in basso, raggiungibile con il pollice -->
+  <nav class="tabbar" aria-label="Sezioni">
+    <a href="#/" data-tab="camere">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      <span>Camere</span>
+    </a>
+    <a href="#/storico" data-tab="storico">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+      <span>Storico</span>
+    </a>
+    <a href="#/dati" data-tab="dati">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 8.5"/><path d="M12 12v8M9 15l3-3 3 3"/></svg>
+      <span>Dati</span>
+      <i class="tab-dot" id="export-dot" hidden></i>
+    </a>
+    <a href="#/impostazioni" data-tab="impostazioni">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      <span>Impostazioni</span>
+    </a>
+  </nav>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <div id="modal-root"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

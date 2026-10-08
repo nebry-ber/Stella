@@ -1,0 +1,149 @@
+# Bucaneve · Consumazioni
+
+App web (PWA) per registrare le consumazioni addebitate alle camere dell'**Hotel Bucaneve di Ronzone (TN)**.
+
+È un **prototipo** da far provare al personale. Funziona da browser, si installa sul telefono o sul tablet come un'app e lavora anche **senza internet**. Non c'è un server: i dati restano salvati sul dispositivo e si passano da un dispositivo all'altro **a mano, tramite Google Drive** (vedi sotto).
+
+> Nel repository non ci sono dati dell'hotel o degli ospiti. Camere, listino e conti esistono solo sui dispositivi che usano l'app.
+
+---
+
+## Cosa fa
+
+- **Griglia camere**: 30 camere (1–30) e 10 postazioni extra (E1–E10) per i clienti senza camera. Le caselle con consumazioni diventano verdi (camere) o azzurre (postazioni extra) e mostrano il totale aperto.
+- **Dettaglio camera**: nome ospite (facoltativo), prodotti divisi per categoria. Un tocco aggiunge il prodotto, un altro tocco aumenta la quantità. Ogni riga ha data, ora e dispositivo. Una riga sbagliata si può **annullare**: resta visibile come "annullata" e non viene addebitata.
+- **Riepilogo check-out**: schermata pulita da mostrare al cliente, con dettaglio, totali per aliquota IVA e totale generale. "Stampa / salva PDF" (dicitura *Riepilogo non fiscale*) e "Chiudi conto", che archivia le consumazioni e libera la camera.
+- **Storico** dei conti chiusi, filtrabile per data, con esportazione CSV.
+- **Impostazioni**: listino (nome, prezzo, categoria, IVA), nomi delle camere e postazioni, nome del dispositivo, PIN facoltativo.
+- **Dati**: esportazione/importazione per la sincronizzazione via Drive, CSV per Excel e avviso se l'ultima esportazione è più vecchia di 24 ore.
+
+---
+
+## 1. Pubblicare su GitHub Pages
+
+Serve solo il repository su GitHub: non c'è niente da compilare né da installare.
+
+1. Su GitHub apri il repository e vai su **Settings → Pages**.
+2. In **Build and deployment → Source** scegli **Deploy from a branch**.
+3. In **Branch** scegli il ramo da pubblicare (es. `main`) e la cartella **`/ (root)`**, poi **Save**.
+4. Dopo uno o due minuti l'app è online all'indirizzo indicato nella stessa pagina, per esempio
+   `https://nome-utente.github.io/Stella/`.
+
+GitHub Pages usa HTTPS, che è necessario per l'installazione e per il funzionamento offline.
+
+**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.0.0'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
+
+**Provare in locale** (facoltativo, per chi sviluppa): da questa cartella, con un qualsiasi server statico, ad esempio
+`python3 -m http.server 8000` e poi apri `http://localhost:8000`.
+
+---
+
+## 2. Installare l'app sul telefono o sul tablet
+
+Apri l'indirizzo dell'app **una volta con internet**, poi:
+
+**Android (Chrome)**
+1. Tocca il menu **⋮** in alto a destra.
+2. Scegli **Installa app** (oppure **Aggiungi a schermata Home**).
+3. L'icona del bucaneve compare tra le app.
+
+**iPhone / iPad (Safari)** — su iPhone usare Safari, non altri browser
+1. Tocca il pulsante **Condividi** (il quadrato con la freccia verso l'alto).
+2. Scegli **Aggiungi alla schermata Home**, poi **Aggiungi**.
+
+Dopo l'installazione l'app si apre a schermo intero e funziona anche senza rete.
+
+**Al primo avvio su ogni dispositivo:** vai in **Impostazioni** e dai un nome al dispositivo (es. `BAR`, `RECEPTION`, `SALA`). Il nome compare nei file esportati e accanto a ogni consumazione.
+
+> ⚠️ I dati stanno **nella memoria del browser** di quel dispositivo. Se si cancellano i dati di navigazione di Chrome/Safari, o si disinstalla l'app, i dati non ancora esportati si perdono. Per questo l'esportazione regolare su Drive è importante.
+
+---
+
+## 3. Sincronizzazione via Google Drive (procedura per il personale)
+
+Ogni dispositivo ha i propri dati. Per vederli anche sugli altri dispositivi si passa un file attraverso una **cartella condivisa su Google Drive** (ad esempio `Bucaneve – Sincronizzazione`), creata una volta sola dal responsabile e condivisa con chi usa l'app.
+
+### Quando farla
+- **A fine turno** (o almeno una volta al giorno).
+- **Prima di un check-out**, se l'ospite ha consumato anche in un altro punto (es. bar e ristorante): così il conto è completo.
+- Quando l'app mostra l'avviso giallo **"Sono passate più di 24 ore"**.
+
+### A · Inviare i propri dati (Esporta)
+1. Apri l'app e tocca **Dati** (in basso).
+2. Tocca **Esporta dati**. Viene scaricato un file come
+   `bucaneve_BAR_2026-10-08_1030.json` (nome dispositivo, data, ora).
+   - Se compare **Condividi su Drive…**, puoi usare quello e scegliere direttamente Drive e la cartella condivisa.
+3. Apri l'app **Google Drive**, entra nella cartella condivisa, tocca **+ → Carica** e scegli il file appena scaricato (di solito nella cartella *Download*).
+
+### B · Ricevere i dati degli altri (Importa)
+1. In Google Drive, nella cartella condivisa, scarica il file **più recente di ogni altro dispositivo** (⋮ → *Scarica*).
+2. Nell'app tocca **Dati → Scegli file da importare** e seleziona il file. Se è impostato un PIN, l'app lo chiede.
+3. Compare il **riepilogo**: quante consumazioni e conti sono nuovi o aggiornati, e su quali camere.
+4. Ripeti per il file di ogni altro dispositivo.
+
+### Cose da sapere
+- **Si può importare lo stesso file più volte**: non si creano doppioni. Se non c'è niente di nuovo l'app scrive *"Nessuna novità"*.
+- Ogni consumazione ha un codice univoco, l'ora dell'ultima modifica e il nome del dispositivo. Se la stessa riga è stata modificata su due dispositivi (es. annullata su uno), **vince la modifica più recente**.
+- L'ordine con cui si importano i file non conta.
+- Dopo l'importazione conviene **esportare di nuovo**, così sul Drive c'è una copia aggiornata con i dati di tutti.
+- Se un conto è stato chiuso su un dispositivo e nel frattempo un altro dispositivo ha aggiunto una consumazione alla stessa camera, dopo la sincronizzazione quella consumazione compare come **conto aperto** sulla camera: non si perde niente, va chiusa a parte.
+- Le impostazioni personali del dispositivo (nome dispositivo e PIN) non vengono trasferite.
+- I file su Drive possono essere eliminati periodicamente: basta tenere gli ultimi di ogni dispositivo.
+
+### CSV per Excel
+In **Dati** (o in **Storico**) scegli il periodo e tocca **Esporta CSV**. Il file contiene i conti chiusi nel periodo, una riga per consumazione: data, ora, camera, ospite, prodotto, quantità, prezzo, IVA, totale (più data di chiusura e dispositivo). Usa il punto e virgola come separatore e la virgola nei decimali, quindi si apre direttamente con Excel in italiano. Le righe annullate non sono incluse.
+
+---
+
+## Uso quotidiano in breve
+
+| Cosa voglio fare | Dove |
+|---|---|
+| Addebitare una consumazione | **Camere** → tocca la camera → tocca il prodotto (di nuovo per aumentare la quantità) |
+| Correggere un errore appena fatto | **Annulla** nel messaggio in basso, oppure **−1** / **Annulla** sulla riga |
+| Fare il check-out | Camera → **Check-out** → mostra il riepilogo → **Stampa / salva PDF** → **Chiudi conto** |
+| Rivedere un conto chiuso | **Storico** → scegli le date → tocca il conto |
+| Cambiare prezzi o prodotti | **Impostazioni** → Listino |
+
+Un secondo tocco sullo stesso prodotto aumenta la quantità della riga se la riga è stata aggiunta negli ultimi 15 minuti; dopo, viene creata una riga nuova con il suo orario.
+
+**PIN** (facoltativo, in Impostazioni): se impostato, viene chiesto per chiudere un conto, importare dati e aprire le impostazioni. È un deterrente per l'uso quotidiano, non una protezione forte: chi ha in mano il dispositivo sbloccato può comunque accedere ai dati del browser.
+
+**IVA**: il listino di esempio usa il 10% per la somministrazione e il 22% per gli articoli vari. Sono valori **indicativi**: verificare le aliquote corrette con il commercialista. I prezzi sono IVA inclusa; imponibile e imposta sono calcolati per scorporo sul totale di ciascuna aliquota.
+
+Il riepilogo **non è un documento fiscale**: scontrino o fattura vanno emessi con gli strumenti abituali dell'hotel.
+
+---
+
+## Per chi sviluppa
+
+Solo file statici: HTML, CSS e JavaScript (moduli ES), nessuna dipendenza, nessun build.
+
+```
+index.html             struttura della pagina, intestazione con montagne, tab bar
+css/app.css            stile (palette cielo / prati / neve / roccia), stampa
+js/app.js              interfaccia: schermate, eventi, navigazione (#/…)
+js/store.js            servizio dati: tutte le operazioni (aggiungi, chiudi conto, importa…)
+js/model.js            regole pure: totali, IVA, unione dati, CSV, date (testabili)
+js/db.js               adattatore IndexedDB (unico file che usa IndexedDB)
+sw.js                  service worker: cache dei file per l'uso offline
+manifest.webmanifest   dati per l'installazione come app
+icons/                 icone
+tests/model.test.mjs   test della logica (node --test)
+```
+
+**Separazione dei livelli:** l'interfaccia chiama solo `store.js`; `store.js` usa `db.js` per salvare e `model.js` per i calcoli. Per passare a un backend si scrive un adattatore con le stesse funzioni di `db.js` (`open`, `getAll`, `get`, `put`, `putMany`, `clear`) che chiama un'API, oppure si riscrivono le funzioni di `store.js` mantenendone le firme: l'interfaccia non cambia.
+
+**Modello dei dati** (importi sempre in centesimi; ogni record ha `id`, `updatedAt`, `device`):
+
+| Archivio | Contenuto |
+|---|---|
+| `locations` | camere e postazioni: `kind` (`camera`/`extra`), `label`, `guestName`, `active` |
+| `products` | listino: `name`, `price`, `category`, `vat`, `active` (i prodotti eliminati restano disattivati, così la sincronizzazione funziona) |
+| `consumptions` | righe addebitate: copia di nome/prezzo/IVA, `qty`, `createdAt`, `cancelled`, `accountId` (`null` finché il conto è aperto) |
+| `accounts` | conti chiusi: `locationName`, `guestName`, `closedAt`, `total` |
+| `meta` | impostazioni locali del dispositivo (non esportate) |
+
+Camere, postazioni e prodotti iniziali hanno id fissi (`R1`…`R30`, `E1`…`E10`, `p001`…), così dispositivi inizializzati separatamente non creano doppioni alla prima sincronizzazione.
+
+**Test:** `node --test` dalla cartella del progetto (Node 18 o successivo).
