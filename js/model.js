@@ -272,6 +272,32 @@ export function defaultProducts() {
 }
 
 // ---------------------------------------------------------------------------
+// Dati della struttura (intestazione della ricevuta)
+// ---------------------------------------------------------------------------
+
+export const HOTEL_ID = 'hotel';
+
+/** Valori iniziali, modificabili in Impostazioni → Dati struttura. */
+export function defaultHotel() {
+  return {
+    id: HOTEL_ID, name: 'Hotel Bucaneve', place: 'Ronzone (TN)',
+    company: '', address: '', vatNumber: '', phone: '', email: '',
+    logo: '', footer: 'Grazie per aver soggiornato da noi!',
+    updatedAt: 0, device: 'iniziale',
+  };
+}
+
+/** "Hotel Bucaneve – Ronzone (TN)" */
+export function hotelTitle(h) {
+  return [h.name, h.place].filter(Boolean).join(' – ');
+}
+
+/** Numero di riferimento leggibile di un conto chiuso, es. "A1B2C3D4". */
+export function accountRef(id) {
+  return String(id || '').replace(/-/g, '').slice(0, 8).toUpperCase();
+}
+
+// ---------------------------------------------------------------------------
 // Sincronizzazione: unione dei dati
 // ---------------------------------------------------------------------------
 
@@ -314,7 +340,7 @@ export function validateExport(obj) {
   }
   const d = obj.data;
   if (!d || typeof d !== 'object') throw new Error('Il file non contiene la sezione dati.');
-  for (const k of ['locations', 'products', 'consumptions', 'accounts']) {
+  for (const k of ['locations', 'products', 'consumptions', 'accounts', 'config']) {
     if (d[k] !== undefined && !Array.isArray(d[k])) throw new Error(`Sezione "${k}" non valida.`);
   }
   return true;

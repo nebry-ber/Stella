@@ -8,10 +8,10 @@
  */
 
 const DB_NAME = 'bucaneve';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // 2: aggiunto l'archivio "config" (dati della struttura)
 
 /** Archivi (tabelle) usati dall'app. Tutti hanno chiave primaria "id". */
-export const STORES = ['locations', 'products', 'consumptions', 'accounts', 'meta'];
+export const STORES = ['locations', 'products', 'consumptions', 'accounts', 'config', 'meta'];
 
 let dbPromise = null;
 

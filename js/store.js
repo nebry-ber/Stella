@@ -153,6 +153,26 @@ export function setGuestEmail(locationId, guestEmail) {
 }
 
 // ---------------------------------------------------------------------------
+// Dati della struttura (sincronizzati: valgono per tutti i dispositivi)
+// ---------------------------------------------------------------------------
+
+export async function getHotel() {
+  return { ...M.defaultHotel(), ...((await db.get('config', M.HOTEL_ID)) || {}) };
+}
+
+const HOTEL_FIELDS = ['name', 'place', 'company', 'address', 'vatNumber', 'phone', 'email', 'logo', 'footer'];
+
+export async function saveHotel(patch) {
+  const cur = await getHotel();
+  const clean = {};
+  for (const k of HOTEL_FIELDS) if (k in patch) clean[k] = String(patch[k] ?? '').trim();
+  if ('name' in clean && !clean.name) throw new Error('Il nome della struttura non può essere vuoto.');
+  const rec = M.stamp({ ...cur, ...clean }, device());
+  await db.put('config', rec);
+  return rec;
+}
+
+// ---------------------------------------------------------------------------
 // Listino
 // ---------------------------------------------------------------------------
 
@@ -287,6 +307,42 @@ export const addStayCharge = serial(async (locationId, type, { nights, persons =
   return line;
 });
 
+/** Aumenta di 1 la quantità di una riga aperta. */
+export const incrementLine = serial(async (id) => {
+  const cur = await db.get('consumptions', id);
+  if (!cur || cur.accountId || cur.cancelled) return null;
+  const rec = M.stamp({ ...cur, qty: cur.qty + 1 }, device());
+  await db.put('consumptions', rec);
+  return rec;
+});
+
+/** Imposta la quantità esatta (es. da 4 a 3); 0 annulla la riga. */
+export const setLineQty = serial(async (id, qty) => {
+  const cur = await db.get('consumptions', id);
+  if (!cur || cur.accountId || cur.cancelled) return null;
+  if (!Number.isInteger(qty) || qty < 0 || qty > 999) throw new Error('Quantità non valida.');
+  if (qty === 0) return doCancel(cur);
+  if (qty === cur.qty) return cur;
+  const rec = M.stamp({ ...cur, qty }, device());
+  await db.put('consumptions', rec);
+  return rec;
+});
+
+/**
+ * Toglie un pezzo di un prodotto dal conto aperto, partendo dalla riga più
+ * recente (il "−" sul pulsante del prodotto). Se la riga aveva quantità 1
+ * viene annullata. Restituisce la riga modificata o null.
+ */
+export const removeOneOfProduct = serial(async (locationId, productId) => {
+  const lines = (await openLines(locationId)).filter((l) => !l.cancelled && l.productId === productId);
+  const cur = lines.pop();
+  if (!cur) return null;
+  if (cur.qty <= 1) return doCancel(cur);
+  const rec = M.stamp({ ...cur, qty: cur.qty - 1 }, device());
+  await db.put('consumptions', rec);
+  return rec;
+});
+
 /** Diminuisce di 1 la quantità; se era 1 la riga viene annullata. */
 export const decrementLine = serial(async (id) => {
   const cur = await db.get('consumptions', id);
@@ -365,7 +421,7 @@ export async function accountLines(accountId) {
 // Esportazione / importazione / CSV
 // ---------------------------------------------------------------------------
 
-const SYNCED = ['locations', 'products', 'consumptions', 'accounts'];
+const SYNCED = ['locations', 'products', 'consumptions', 'accounts', 'config'];
 
 /** Tutti i dati condivisi (le impostazioni del dispositivo e il PIN restano locali). */
 export async function exportData() {

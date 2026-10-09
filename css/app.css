@@ -182,15 +182,28 @@ h3 { font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spa
 .chip.active { background: var(--sky-deep); border-color: var(--sky-deep); color: #fff; }
 .products { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
 .prod {
-  position: relative; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between;
-  min-height: 78px; padding: 10px 12px; border-radius: var(--radius); cursor: pointer; text-align: left;
+  position: relative; display: flex; min-height: 78px; border-radius: var(--radius);
   border: 1.5px solid var(--meadow-light); background: var(--meadow-pale); color: var(--text);
 }
-.prod:active { background: var(--meadow-light); transform: scale(.97); }
-.prod-name { font-weight: 650; font-size: 16px; line-height: 1.2; padding-right: 24px; }
+.prod.has-qty { border-color: var(--meadow); }
+.prod-add {
+  flex: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 4px;
+  padding: 10px 12px; border: 0; background: transparent; border-radius: inherit; text-align: left; cursor: pointer; color: inherit;
+}
+.prod-add:active { background: var(--meadow-light); }
+.prod:active { transform: scale(.98); }
+.prod-name { font-weight: 650; font-size: 16px; line-height: 1.2; padding-right: 28px; }
 .prod-price { font-size: 14px; color: var(--meadow-dark); font-weight: 600; }
+.prod.has-qty .prod-price { padding-right: 48px; }
+/* "−" per togliere un pezzo: in basso a destra, grande abbastanza per il pollice */
+.prod-minus {
+  position: absolute; right: 4px; bottom: 4px; width: 44px; height: 44px; border-radius: 12px;
+  border: 1.5px solid var(--meadow); background: #fff; color: var(--meadow-dark);
+  font-size: 26px; font-weight: 700; line-height: 1; cursor: pointer; display: grid; place-items: center;
+}
+.prod-minus:active { background: var(--meadow-light); }
 .badge {
-  position: absolute; top: 6px; right: 6px; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 13px;
+  position: absolute; top: 6px; right: 6px; pointer-events: none; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 13px;
   background: var(--meadow); color: #fff; font-size: 14px; font-weight: 700; display: grid; place-items: center;
 }
 
@@ -202,7 +215,17 @@ h3 { font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spa
 .line-name { flex: 1; font-weight: 600; }
 .line-total { font-weight: 700; white-space: nowrap; }
 .line-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
-.line-actions { display: flex; gap: 6px; }
+.line-actions { display: flex; gap: 8px; align-items: center; }
+.stepper { display: inline-flex; align-items: stretch; border: 1.5px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+.stepper button {
+  min-width: 44px; min-height: 44px; border: 0; background: transparent; cursor: pointer;
+  font-size: 22px; font-weight: 700; color: var(--sky-deep);
+}
+.stepper button:active { background: var(--sky-low); }
+.stepper .stepper-qty {
+  min-width: 48px; font-size: 18px; color: var(--text); font-variant-numeric: tabular-nums;
+  border-left: 1.5px solid var(--line); border-right: 1.5px solid var(--line);
+}
 .line.cancelled { background: #f4f6f8; box-shadow: none; border: 1px dashed var(--line); }
 .line.cancelled .line-name, .line.cancelled .line-total, .line.cancelled .line-qty { text-decoration: line-through; color: var(--muted); }
 .tag { background: #eceff2; color: var(--rock-dark); border-radius: 8px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
@@ -243,35 +266,55 @@ table.simple th, table.simple td { padding: 6px 4px; border-bottom: 1px solid va
 .ok-text { color: var(--meadow-dark); font-weight: 600; }
 .import-result { border: 1.5px solid var(--meadow-light); }
 
-/* ---------- Riepilogo per il cliente ---------- */
+/* ---------- Riepilogo per il cliente (schermo e A4) ---------- */
 .receipt {
   background: #fff; border-radius: var(--radius); box-shadow: var(--shadow);
-  padding: 20px 18px; color: #1a1a1a; border-top: 6px solid var(--meadow);
+  padding: 20px 18px; color: #1a1a1a; font-variant-numeric: tabular-nums;
 }
-.receipt-head { text-align: center; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
-.receipt-hotel { font-size: 22px; font-weight: 750; color: var(--sky-deep); }
-.receipt-place { color: var(--muted); font-size: 15px; }
+.rc-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px 24px; padding-bottom: 14px; border-bottom: 2px solid var(--rock-dark); }
+.rc-brand { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rc-logo { display: block; max-width: min(260px, 100%); max-height: 70px; object-fit: contain; object-position: left center; }
+.rc-name { font-size: 22px; font-weight: 750; color: var(--sky-deep); }
+.rc-place { color: var(--muted); font-size: 14px; }
+.rc-legal { display: flex; flex-direction: column; font-size: 12.5px; color: var(--rock-dark); line-height: 1.45; text-align: right; margin-left: auto; }
+.rc-title { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 16px 0 4px; }
+.rc-title h2 { font-size: 20px; color: var(--rock-dark); }
 .receipt-nf {
-  display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 6px;
-  border: 1.5px solid var(--rock); font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--rock-dark);
+  display: inline-block; padding: 3px 10px; border-radius: 6px;
+  border: 1.5px solid var(--rock); font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--rock-dark);
 }
-.receipt-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin: 14px 0; }
-.receipt-info dt { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.receipt-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px 16px; margin: 12px 0 16px; padding: 12px; background: #f5f8fa; border-radius: 10px; }
+.receipt-info dt { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 .receipt-info dd { margin: 0; font-weight: 600; }
-.receipt table { width: 100%; border-collapse: collapse; font-size: 15px; }
-.receipt th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); text-align: left; padding: 6px 4px; border-bottom: 1.5px solid var(--rock); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .04em; }
+.receipt table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+.receipt th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); text-align: left; padding: 6px 4px; border-bottom: 1.5px solid var(--rock); }
 .receipt td { padding: 8px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .receipt td .muted { font-size: 12px; }
-.receipt-vat { margin-top: 18px; }
+.receipt .group-row th { padding-top: 16px; color: var(--meadow-dark); font-size: 12px; border-bottom: 1px solid var(--meadow-light); }
+.receipt .group-row th.num { color: var(--rock-dark); }
+.c-date { width: 86px; white-space: nowrap; }
+.c-qty { width: 44px; }
+.c-price, .c-amt { width: 84px; }
+.only-narrow { display: none; }
+@media (max-width: 560px) {
+  .receipt .c-date, .receipt .c-price { display: none; }
+  .receipt .only-narrow { display: block; }
+  .rc-legal { text-align: left; margin-left: 0; }
+}
+.rc-bottom { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 18px; }
+@media (min-width: 700px) { .rc-bottom { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: end; } }
+.receipt-vat { font-size: 13px !important; }
 .receipt-total {
-  display: flex; justify-content: space-between; align-items: baseline;
-  margin-top: 14px; padding: 12px 4px 0; border-top: 2px solid var(--rock-dark); font-size: 18px;
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 14px 16px; border-radius: 12px; background: var(--rock-dark); color: #fff; font-size: 16px;
 }
 .receipt-total strong { font-size: 28px; }
-.receipt-foot { margin: 14px 0 0; font-size: 12px; color: var(--muted); text-align: center; }
-
-/* Gruppi nel riepilogo (Soggiorno / Consumazioni) */
-.receipt .group-row th { padding-top: 14px; border-bottom: 1px solid var(--line); color: var(--meadow-dark); }
+.rc-foot { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); text-align: center; font-size: 12px; color: var(--muted); }
+.rc-foot p { margin: 2px 0; }
+.rc-thanks { font-size: 15px; color: var(--meadow-dark); font-weight: 600; }
+.logo-box { display: grid; place-items: center; min-height: 90px; padding: 12px; border: 1.5px dashed var(--line); border-radius: 12px; background: #fff; margin: 6px 0; }
+.logo-box img { max-width: 100%; max-height: 90px; }
 
 /* ---------- Voci di soggiorno (check-out, solo per il personale) ---------- */
 .stay-card { border: 1.5px solid var(--sky-low); }
@@ -350,11 +393,17 @@ body[data-route="loc"] .toast { bottom: calc(var(--tabbar-h) + var(--safe-bottom
 
 /* ---------- Stampa: solo il riepilogo per il cliente ---------- */
 @media print {
-  @page { margin: 14mm; }
-  body { background: #fff; padding: 0; font-size: 12pt; }
-  .app-header, .tabbar, .toast, .update-bar, .no-print, .actions, #modal-root { display: none !important; }
+  @page { size: A4; margin: 14mm 14mm 16mm; }
+  body { background: #fff; padding: 0; font-size: 11pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .app-header, .tabbar, .toast, .update-bar, .no-print, .actions, .sticky-bar, #modal-root { display: none !important; }
   .view { padding: 0; max-width: none; }
-  .receipt { box-shadow: none; border-radius: 0; padding: 0; border-top: 0; }
-  .receipt-hotel { color: #000; }
-  .receipt tr { break-inside: avoid; }
+  .receipt { box-shadow: none; border-radius: 0; padding: 0; }
+  .receipt .c-date, .receipt .c-price { display: table-cell !important; }
+  .receipt .only-narrow { display: none !important; }
+  .rc-legal { text-align: right !important; margin-left: auto !important; }
+  .rc-bottom { grid-template-columns: 1.4fr 1fr !important; align-items: end; }
+  .receipt-info { background: none; border: 1px solid #ccc; }
+  .receipt-total { background: none; color: #000; border: 2px solid #000; }
+  .receipt tr, .rc-bottom { break-inside: avoid; }
+  .receipt thead { display: table-header-group; }
 }

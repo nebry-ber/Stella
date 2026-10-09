@@ -10,7 +10,7 @@
 import * as S from './store.js';
 import * as M from './model.js';
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const UNLOCK_MS = 5 * 60 * 1000; // dopo il PIN, impostazioni sbloccate per 5 minuti
 
 const $view = document.getElementById('view');
@@ -30,7 +30,6 @@ const ui = {
   stay: { loc: null, nights: 1, persons: 1, prices: {} }, // campi del riquadro "Voci di soggiorno"
 };
 
-const HOTEL = 'Hotel Bucaneve – Ronzone (TN)';
 
 // ---------------------------------------------------------------------------
 // Utilità
@@ -52,6 +51,30 @@ function setHeader(title, subtitle = '', backTo = null) {
 function go(hash) {
   if (location.hash === hash) render();
   else location.hash = hash;
+}
+
+/**
+ * Legge un'immagine scelta dall'utente e la riduce (max 800×300 px) per
+ * tenerla leggera nei file di sincronizzazione. Restituisce un data URL PNG.
+ */
+function imageToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!/^image\//.test(file.type)) { reject(new Error('Il file scelto non è un\'immagine.')); return; }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 800 / img.naturalWidth, 300 / img.naturalHeight);
+      const w = Math.max(1, Math.round(img.naturalWidth * scale));
+      const h = Math.max(1, Math.round(img.naturalHeight * scale));
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/png'));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Impossibile leggere l\'immagine.')); };
+    img.src = url;
+  });
 }
 
 /** Scarica un file generato nel browser. */
@@ -247,12 +270,16 @@ async function renderLocation(id) {
 
   const prods = products.filter((p) => p.category === ui.category).map((p) => {
     const q = qtyByProduct.get(p.id);
+    // Tocco sul prodotto = +1; il "−" (visibile quando è già nel conto) toglie un pezzo
     return `
-      <button type="button" class="prod" data-action="add" data-id="${esc(p.id)}">
-        <span class="prod-name">${esc(p.name)}</span>
-        <span class="prod-price">${euro(p.price)}</span>
-        ${q ? `<span class="badge" aria-label="già ${q} nel conto">${q}</span>` : ''}
-      </button>`;
+      <div class="prod ${q ? 'has-qty' : ''}">
+        <button type="button" class="prod-add" data-action="add" data-id="${esc(p.id)}">
+          <span class="prod-name">${esc(p.name)}</span>
+          <span class="prod-price">${euro(p.price)}</span>
+        </button>
+        ${q ? `<span class="badge" aria-label="${q} nel conto">${q}</span>
+        <button type="button" class="prod-minus" data-action="remove-one" data-id="${esc(p.id)}" aria-label="Togli un ${esc(p.name)}">−</button>` : ''}
+      </div>`;
   }).join('');
 
   const rows = lines.slice().reverse().map((l) => `
@@ -267,7 +294,11 @@ async function renderLocation(id) {
         ${l.cancelled
           ? `<span class="tag">annullata ${M.formatTime(l.cancelledAt)}</span>`
           : `<span class="line-actions">
-              ${M.isStayLine(l) ? '' : `<button type="button" class="btn btn-small btn-ghost" data-action="decrement" data-id="${esc(l.id)}" aria-label="Togli uno">−1</button>`}
+              ${M.isStayLine(l) ? '' : `<span class="stepper" role="group" aria-label="Quantità ${esc(l.name)}">
+                <button type="button" data-action="decrement" data-id="${esc(l.id)}" data-qty="${l.qty}" aria-label="Togli uno">−</button>
+                <button type="button" class="stepper-qty" data-action="set-qty" data-id="${esc(l.id)}" data-qty="${l.qty}" aria-label="Quantità ${l.qty}: tocca per scriverla">${l.qty}</button>
+                <button type="button" data-action="increment" data-id="${esc(l.id)}" aria-label="Aggiungi uno">+</button>
+              </span>`}
               <button type="button" class="btn btn-small btn-ghost danger" data-action="cancel-line" data-id="${esc(l.id)}">Annulla</button>
             </span>`}
       </div>
@@ -292,51 +323,74 @@ async function renderLocation(id) {
 // 3. Riepilogo check-out (anche per i conti chiusi dello storico)
 // ---------------------------------------------------------------------------
 
-/** Documento pulito da mostrare/stampare per il cliente. Le righe annullate non compaiono. */
-function receiptHtml({ name, guestName, lines, closedAt }) {
+/**
+ * Documento da mostrare/stampare per il cliente (impaginato anche per A4).
+ * Le righe annullate non compaiono; le voci di soggiorno vanno in testa.
+ */
+function receiptHtml(hotel, { name, guestName, lines, closedAt, ref }) {
   const active = M.activeLines(lines);
   const totals = M.computeTotals(lines);
-  const period = M.periodText(lines);
   const stay = active.filter(M.isStayLine);
   const items = active.filter((l) => !M.isStayLine(l));
   const row = (l, withDate) => `
-            <tr>
-              <td><div>${esc(l.name)}</div>${withDate ? `<div class="muted">${M.formatDate(l.createdAt)} ${M.formatTime(l.createdAt)}</div>` : ''}</td>
-              <td class="num">${l.qty} × ${euro(l.price)}</td>
-              <td class="num">${euro(M.lineTotal(l))}</td>
-            </tr>`;
-  // Le voci di soggiorno vanno in testa; il titolo "Consumazioni" serve solo se ci sono entrambe
-  const group = (title, list, withDate) => (list.length
-    ? `${title ? `<tr class="group-row"><th colspan="3">${title}</th></tr>` : ''}${list.map((l) => row(l, withDate)).join('')}` : '');
+          <tr>
+            <td class="c-date">${withDate ? `${M.formatDate(l.createdAt)}<br><span class="muted">${M.formatTime(l.createdAt)}</span>` : ''}</td>
+            <td class="c-desc">${esc(l.name)}${withDate ? `<div class="muted only-narrow">${M.formatDate(l.createdAt)} ${M.formatTime(l.createdAt)}</div>` : ''}</td>
+            <td class="num c-qty">${l.qty}</td>
+            <td class="num c-price">${euro(l.price)}</td>
+            <td class="num c-amt">${euro(M.lineTotal(l))}</td>
+          </tr>`;
+  const sub = (list) => list.reduce((t, l) => t + M.lineTotal(l), 0);
+  const group = (title, list, withDate) => (list.length ? `
+        <tbody>
+          <tr class="group-row"><th colspan="4">${title}</th><th class="num">${euro(sub(list))}</th></tr>
+          ${list.map((l) => row(l, withDate)).join('')}
+        </tbody>` : '');
+  const contacts = [hotel.phone && `Tel. ${esc(hotel.phone)}`, hotel.email && esc(hotel.email)].filter(Boolean).join(' · ');
   return `
     <article class="receipt" id="receipt">
-      <header class="receipt-head">
-        <div class="receipt-hotel">Hotel Bucaneve</div>
-        <div class="receipt-place">Ronzone (TN)</div>
-        <div class="receipt-nf">Riepilogo non fiscale</div>
+      <header class="rc-head">
+        <div class="rc-brand">
+          ${hotel.logo ? `<img class="rc-logo" src="${esc(hotel.logo)}" alt="${esc(hotel.name)}">` : `<div class="rc-name">${esc(hotel.name)}</div>`}
+          ${hotel.place ? `<div class="rc-place">${esc(hotel.place)}</div>` : ''}
+        </div>
+        <div class="rc-legal">
+          ${hotel.company ? `<strong>${esc(hotel.company)}</strong>` : ''}
+          ${hotel.address ? `<span>${esc(hotel.address)}</span>` : ''}
+          ${hotel.vatNumber ? `<span>P.IVA ${esc(hotel.vatNumber)}</span>` : ''}
+          ${contacts ? `<span>${contacts}</span>` : ''}
+        </div>
       </header>
+      <div class="rc-title">
+        <h2>Riepilogo conto</h2>
+        <span class="receipt-nf">Riepilogo non fiscale</span>
+      </div>
       <dl class="receipt-info">
-        <div><dt>Postazione</dt><dd>${esc(name)}</dd></div>
-        ${guestName ? `<div><dt>Ospite</dt><dd>${esc(guestName)}</dd></div>` : ''}
-        <div><dt>Periodo</dt><dd>${period}</dd></div>
-        <div><dt>${closedAt ? 'Conto chiuso il' : 'Data'}</dt><dd>${M.formatDateTime(closedAt || Date.now())}</dd></div>
+        <div><dt>Camera / postazione</dt><dd>${esc(name)}</dd></div>
+        <div><dt>Ospite</dt><dd>${guestName ? esc(guestName) : '—'}</dd></div>
+        <div><dt>Periodo</dt><dd>${M.periodText(lines)}</dd></div>
+        <div><dt>${closedAt ? 'Chiuso il' : 'Data'}</dt><dd>${M.formatDateTime(closedAt || Date.now())}</dd></div>
+        ${ref ? `<div><dt>Riferimento</dt><dd class="mono">${esc(ref)}</dd></div>` : ''}
       </dl>
       <table class="receipt-items">
-        <thead><tr><th>Voce</th><th class="num">Q.tà</th><th class="num">Importo</th></tr></thead>
-        <tbody>
-          ${group('Soggiorno', stay, false)}
-          ${group(stay.length ? 'Consumazioni' : '', items, true)}
-          ${active.length ? '' : '<tr><td colspan="3" class="muted">Nessuna voce</td></tr>'}
-        </tbody>
+        <thead><tr><th class="c-date">Data</th><th class="c-desc">Descrizione</th><th class="num c-qty">Q.tà</th><th class="num c-price">Prezzo</th><th class="num c-amt">Importo</th></tr></thead>
+        ${group('Soggiorno', stay, false)}
+        ${group('Consumazioni', items, true)}
+        ${active.length ? '' : '<tbody><tr><td colspan="5" class="muted">Nessuna voce</td></tr></tbody>'}
       </table>
-      <table class="receipt-vat">
-        <thead><tr><th>Aliquota IVA</th><th class="num">Imponibile</th><th class="num">IVA</th><th class="num">Totale</th></tr></thead>
-        <tbody>
-          ${totals.vat.map((v) => `<tr><td>${M.vatLabel(v.rate)}</td><td class="num">${euro(v.net)}</td><td class="num">${euro(v.tax)}</td><td class="num">${euro(v.gross)}</td></tr>`).join('')}
-        </tbody>
-      </table>
-      <div class="receipt-total"><span>Totale</span><strong data-testid="grand-total">${euro(totals.total)}</strong></div>
-      <p class="receipt-foot">Documento riepilogativo non valido ai fini fiscali. Prezzi IVA inclusa.</p>
+      <div class="rc-bottom">
+        <table class="receipt-vat">
+          <thead><tr><th>Aliquota IVA</th><th class="num">Imponibile</th><th class="num">IVA</th><th class="num">Totale</th></tr></thead>
+          <tbody>
+            ${totals.vat.map((v) => `<tr><td>${M.vatLabel(v.rate)}</td><td class="num">${euro(v.net)}</td><td class="num">${euro(v.tax)}</td><td class="num">${euro(v.gross)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+        <div class="receipt-total"><span>Totale da pagare</span><strong data-testid="grand-total">${euro(totals.total)}</strong></div>
+      </div>
+      <footer class="rc-foot">
+        ${hotel.footer ? `<p class="rc-thanks">${esc(hotel.footer)}</p>` : ''}
+        <p>Documento riepilogativo non valido ai fini fiscali. Prezzi IVA inclusa.</p>
+      </footer>
     </article>`;
 }
 
@@ -383,11 +437,11 @@ function sendButtonsHtml(source, id) {
 async function renderCheckout(id) {
   const loc = await S.getLocation(id);
   if (!loc) return renderNotFound();
-  const [lines, rates] = await Promise.all([S.openLines(id), S.listStayRates()]);
+  const [lines, rates, hotel] = await Promise.all([S.openLines(id), S.listStayRates(), S.getHotel()]);
   setHeader('Riepilogo check-out', M.locationName(loc), `#/loc/${id}`);
   $view.innerHTML = `
     ${loc.kind === 'camera' ? stayCardHtml(id, lines, rates) : ''}
-    ${receiptHtml({ name: M.locationName(loc), guestName: loc.guestName, lines })}
+    ${receiptHtml(hotel, { name: M.locationName(loc), guestName: loc.guestName, lines })}
     ${lines.length ? sendButtonsHtml('open', id) : ''}
     <div class="sticky-bar no-print">
       <button type="button" class="btn btn-secondary" data-action="print" data-title="Riepilogo ${esc(M.locationName(loc))}">Stampa / salva PDF</button>
@@ -439,11 +493,11 @@ async function renderHistory() {
 async function renderAccount(id) {
   const acc = await S.getAccount(id);
   if (!acc) return renderNotFound();
-  const lines = await S.accountLines(id);
+  const [lines, hotel] = await Promise.all([S.accountLines(id), S.getHotel()]);
   const cancelled = lines.filter((l) => l.cancelled);
   setHeader('Conto chiuso', acc.locationName, '#/storico');
   $view.innerHTML = `
-    ${receiptHtml({ name: acc.locationName, guestName: acc.guestName, lines, closedAt: acc.closedAt })}
+    ${receiptHtml(hotel, { name: acc.locationName, guestName: acc.guestName, lines, closedAt: acc.closedAt, ref: M.accountRef(acc.id) })}
     <div class="actions no-print">
       <button type="button" class="btn btn-secondary" data-action="print" data-title="Riepilogo ${esc(acc.locationName)} ${M.dateKey(acc.closedAt)}">Stampa / salva PDF</button>
     </div>
@@ -576,8 +630,8 @@ async function renderSettings() {
     return;
   }
   const settings = S.getSettings();
-  const [products, locs, open, stayRates] = await Promise.all([
-    S.listProducts({ includeInactive: true }), S.listLocations({ includeInactive: true }), S.openSummary(), S.listStayRates(),
+  const [products, locs, open, stayRates, hotel] = await Promise.all([
+    S.listProducts({ includeInactive: true }), S.listLocations({ includeInactive: true }), S.openSummary(), S.listStayRates(), S.getHotel(),
   ]);
   const active = products.filter((p) => p.active !== false);
   const inactive = products.filter((p) => p.active === false);
@@ -604,6 +658,31 @@ async function renderSettings() {
   };
 
   $view.innerHTML = `
+    <section class="card">
+      <h2 class="section-title">Dati struttura <small>intestazione della ricevuta</small></h2>
+      <div class="logo-box">
+        ${hotel.logo ? `<img src="${esc(hotel.logo)}" alt="Logo attuale">` : '<span class="muted">Nessun logo: in ricevuta compare il nome.</span>'}
+      </div>
+      <div class="actions">
+        <label class="btn btn-secondary file-btn">${hotel.logo ? 'Cambia logo' : 'Carica logo'}
+          <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" data-change="hotel-logo" hidden></label>
+        ${hotel.logo ? '<button type="button" class="btn btn-ghost danger" data-action="remove-logo">Togli logo</button>' : ''}
+      </div>
+      <p class="muted">Per la stampa su carta bianca usa un logo scuro su sfondo trasparente o bianco.</p>
+      ${[
+        ['name', 'Nome struttura', 'es. Albergo Bucaneve'],
+        ['place', 'Località', 'es. Malosco (TN)'],
+        ['company', 'Ragione sociale', 'es. Rossi Mario & C. s.n.c.'],
+        ['address', 'Indirizzo', 'via, numero, CAP, comune'],
+        ['vatNumber', 'Partita IVA', ''],
+        ['phone', 'Telefono', ''],
+        ['email', 'Email', ''],
+        ['footer', 'Saluto in fondo alla ricevuta', ''],
+      ].map(([k, label, ph]) => `
+        <label class="field"><span>${label}</span>
+          <input type="${k === 'email' ? 'email' : 'text'}" id="hotel-${k}" data-change="hotel-field" data-field="${k}" value="${esc(hotel[k])}" placeholder="${esc(ph)}" maxlength="120" autocomplete="off"></label>`).join('')}
+    </section>
+
     <section class="card">
       <h2 class="section-title">Questo dispositivo</h2>
       <label class="field"><span>Nome dispositivo <small>(compare nei file esportati, es. BAR, RECEPTION)</small></span>
@@ -702,10 +781,11 @@ async function summaryData(source, id) {
     ({ locationName: name, guestName, guestEmail: email, closedAt } = acc);
     lines = await S.accountLines(id);
   }
+  const hotel = await S.getHotel();
   return {
     email: email || '',
-    subject: `Riepilogo ${name} – Hotel Bucaneve`,
-    text: M.buildTextSummary({ hotel: HOTEL, name, guestName, lines, closedAt }),
+    subject: `Riepilogo ${name} – ${hotel.name}`,
+    text: M.buildTextSummary({ hotel: M.hotelTitle(hotel), name, guestName, lines, closedAt }),
   };
 }
 
@@ -739,7 +819,42 @@ const actions = {
     });
   },
 
-  decrement: async (el) => { await S.decrementLine(el.dataset.id); render(); },
+  decrement: async (el) => {
+    if (Number(el.dataset.qty) <= 1) return actions['cancel-line'](el); // da 1 a 0 = annulla, con conferma
+    await S.decrementLine(el.dataset.id);
+    render();
+  },
+
+  increment: async (el) => { await S.incrementLine(el.dataset.id); render(); },
+
+  'set-qty': async (el) => {
+    const r = await openModal({
+      title: 'Quantità',
+      html: `<p>Scrivi la quantità giusta. Con 0 la riga viene annullata (resta nello storico).</p>
+        <input class="pin-input" name="qty" type="number" inputmode="numeric" min="0" max="999" value="${esc(el.dataset.qty)}" aria-label="Quantità">`,
+      buttons: [{ label: 'Annulla', value: 'cancel', cls: 'btn-ghost' }, { label: 'Salva', value: 'ok', cls: 'btn-primary' }],
+      validate: (_v, d) => (/^\d{1,3}$/.test(d.qty.trim()) ? null : 'Scrivi un numero da 0 a 999.'),
+    });
+    if (!r) return;
+    const qty = Number(r.data.qty);
+    const line = await S.setLineQty(el.dataset.id, qty);
+    if (line) toast(qty === 0 ? `${line.name}: riga annullata` : `${line.name}: quantità ${qty}`);
+    render();
+  },
+
+  'remove-one': async (el) => {
+    const line = await S.removeOneOfProduct(currentParam(), el.dataset.id);
+    if (!line) return;
+    if (navigator.vibrate) navigator.vibrate(15);
+    await render();
+    toast(line.cancelled ? `${line.name}: riga annullata` : `${line.name}: ora ×${line.qty}`);
+  },
+
+  'remove-logo': async () => {
+    if (!(await confirmDialog('Togliere il logo?', 'In ricevuta comparirà il nome della struttura.', 'Togli logo', true))) return;
+    await S.saveHotel({ logo: '' });
+    render();
+  },
 
   'cancel-line': async (el) => {
     if (!(await confirmDialog('Annullare la riga?', 'La riga resterà visibile nello storico come <strong>annullata</strong> e non verrà addebitata.', 'Annulla riga', true))) return;
@@ -913,6 +1028,18 @@ const actions = {
 
 /** Gestori dei campi modificabili (evento "change"). */
 const changes = {
+  'hotel-field': async (el) => {
+    await S.saveHotel({ [el.dataset.field]: el.value });
+    toast('Dati struttura salvati');
+  },
+  'hotel-logo': async (el) => {
+    const file = el.files && el.files[0];
+    el.value = '';
+    if (!file) return;
+    await S.saveHotel({ logo: await imageToDataUrl(file) });
+    toast('Logo salvato');
+    render();
+  },
   'stay-nights': (el) => { ui.stay.nights = Math.max(1, parseInt(el.value, 10) || 1); el.value = ui.stay.nights; },
   'stay-persons': (el) => { ui.stay.persons = Math.max(1, parseInt(el.value, 10) || 1); el.value = ui.stay.persons; },
   'stay-price': (el) => { ui.stay.prices[el.dataset.type] = el.value; },

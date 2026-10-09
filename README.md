@@ -12,6 +12,7 @@ App web (PWA) per registrare le consumazioni addebitate alle camere dell'**Hotel
 
 - **Griglia camere**: 30 camere (1–30) e 10 postazioni extra (E1–E10) per i clienti senza camera. Le caselle con consumazioni diventano verdi (camere) o azzurre (postazioni extra) e mostrano il totale aperto.
 - **Dettaglio camera**: nome ospite (facoltativo), prodotti divisi per categoria. Un tocco aggiunge il prodotto, un altro tocco aumenta la quantità. Ogni riga ha data, ora e dispositivo. Una riga sbagliata si può **annullare**: resta visibile come "annullata" e non viene addebitata.
+- **Correzione rapida delle quantità**: tasto **−** sul pulsante del prodotto, **− / +** su ogni riga, oppure tocco sul numero per scrivere la quantità esatta. Portare una riga a 0 la annulla (con conferma).
 - **Riepilogo check-out**: schermata pulita da mostrare al cliente, con dettaglio, totali per aliquota IVA e totale generale. "Stampa / salva PDF" (dicitura *Riepilogo non fiscale*) e "Chiudi conto", che archivia le consumazioni e libera la camera.
 - **Voci di soggiorno al check-out** (solo camere): conto camera, supplemento animale domestico e tassa di soggiorno. Si indicano notti e persone, l'importo proposto si può cambiare conto per conto. Nel riepilogo compaiono in una sezione "Soggiorno" prima delle consumazioni; la tassa è indicata come *fuori campo IVA*.
 - **Invio per email** del riepilogo: si apre l'app di posta del telefono con indirizzo, oggetto e testo già compilati, e si invia dal proprio account. Nessun server di posta. In alternativa **Condividi…** (WhatsApp, Gmail…), dove il telefono lo permette.
@@ -33,7 +34,7 @@ Serve solo il repository su GitHub: non c'è niente da compilare né da installa
 
 GitHub Pages usa HTTPS, che è necessario per l'installazione e per il funzionamento offline.
 
-**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.1.0'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
+**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.2.0'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
 
 **Provare in locale** (facoltativo, per chi sviluppa): da questa cartella, con un qualsiasi server statico, ad esempio
 `python3 -m http.server 8000` e poi apri `http://localhost:8000`.
@@ -102,13 +103,16 @@ In **Dati** (o in **Storico**) scegli il periodo e tocca **Esporta CSV**. Il fil
 | Cosa voglio fare | Dove |
 |---|---|
 | Addebitare una consumazione | **Camere** → tocca la camera → tocca il prodotto (di nuovo per aumentare la quantità) |
-| Correggere un errore appena fatto | **Annulla** nel messaggio in basso, oppure **−1** / **Annulla** sulla riga |
+| Correggere una quantità (es. 4 cappuccini invece di 3) | tasto **−** sul pulsante del prodotto, oppure **− / +** sulla riga, oppure tocca il numero e scrivi la quantità giusta |
+| Togliere una riga sbagliata | **Annulla** sulla riga (resta nello storico come annullata) |
 | Fare il check-out | Camera → **Check-out** → aggiungi le voci di soggiorno → mostra il riepilogo → **Stampa / salva PDF** o **Invia per email** → **Chiudi conto** |
 | Mandare di nuovo un riepilogo | **Storico** → tocca il conto → **Invia per email** |
 | Rivedere un conto chiuso | **Storico** → scegli le date → tocca il conto |
 | Cambiare prezzi o prodotti | **Impostazioni** → Listino |
 
 Un secondo tocco sullo stesso prodotto aumenta la quantità della riga se la riga è stata aggiunta negli ultimi 15 minuti; dopo, viene creata una riga nuova con il suo orario.
+
+**Dati struttura e logo** (Impostazioni → Dati struttura): nome, località, ragione sociale, indirizzo, partita IVA, contatti, logo e saluto finale compaiono nell'intestazione della ricevuta e nell'email. Si inseriscono su un dispositivo e arrivano agli altri con la sincronizzazione. Per la stampa conviene un logo scuro su sfondo trasparente. Nel repository non c'è nessun logo né dato reale: tutto viene inserito dall'app.
 
 **PIN** (facoltativo, in Impostazioni): se impostato, viene chiesto per chiudere un conto, importare dati e aprire le impostazioni. È un deterrente per l'uso quotidiano, non una protezione forte: chi ha in mano il dispositivo sbloccato può comunque accedere ai dati del browser.
 
@@ -148,6 +152,7 @@ tests/model.test.mjs   test della logica (node --test)
 | `locations` | camere e postazioni: `kind` (`camera`/`extra`), `label`, `guestName`, `active` |
 | `products` | listino: `name`, `price`, `category`, `vat`, `active` (i prodotti eliminati restano disattivati, così la sincronizzazione funziona). Le tariffe di soggiorno sono prodotti con categoria `soggiorno` e id fissi `stay-room`, `stay-pet`, `stay-tax` |
 | `consumptions` | righe addebitate: copia di nome/prezzo/IVA, `qty`, `createdAt`, `cancelled`, `accountId` (`null` finché il conto è aperto) |
+| `config` | dati della struttura (record `hotel`: nome, indirizzo, P.IVA, logo come immagine incorporata) |
 | `accounts` | conti chiusi: `locationName`, `guestName`, `guestEmail`, `closedAt`, `total` |
 | `meta` | impostazioni locali del dispositivo (non esportate) |
 

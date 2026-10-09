@@ -123,3 +123,10 @@ test('mailto: destinatario, oggetto e a capo codificati', () => {
   assert.ok(M.isEmail('a.b@c.it'));
   assert.ok(!M.isEmail('a@b'));
 });
+
+test('dati struttura: titolo e riferimento del conto', () => {
+  assert.equal(M.hotelTitle({ name: 'Albergo Bucaneve', place: 'Malosco (TN)' }), 'Albergo Bucaneve – Malosco (TN)');
+  assert.equal(M.hotelTitle({ name: 'Albergo Bucaneve', place: '' }), 'Albergo Bucaneve');
+  assert.equal(M.accountRef('1a2b3c4d-5e6f-4000-8000-000000000000'), '1A2B3C4D');
+  assert.equal(M.defaultHotel().id, M.HOTEL_ID);
+});
