@@ -7,7 +7,9 @@
  *   PATCH /api/admin/hotels/:id              dati, contatti, abbonamento, attiva/disattiva
  *   POST  /api/admin/hotels/:id/logo         logo della struttura (compare sulle ricevute)
  *   POST  /api/admin/hotels/:id/managers     manager aggiuntivo (password provvisoria)
- *   POST  /api/admin/users/:id/reset         nuova password provvisoria per un manager
+ *   POST  /api/admin/users/:id/reset         nuova password provvisoria (manager o altro amministratore)
+ *   GET   /api/admin/admins                  amministratori del servizio
+ *   POST  /api/admin/admins                  nuovo amministratore con password provvisoria
  *
  * Le password provvisorie vengono mostrate una sola volta e vanno cambiate
  * dal manager al primo accesso.
@@ -187,10 +189,31 @@ export function adminRoutes({ HttpError, requireUser, str }) {
       return { hotel: hotelOut(ctx.db, h), credentials: { ...credentials, code: h.code } };
     }],
 
-    ['POST', /^\/api\/admin\/users\/([0-9a-f-]{36})\/reset$/, (ctx) => {
+    ['GET', /^\/api\/admin\/admins$/, (ctx) => {
+      const me = isAdmin(ctx);
+      const rows = ctx.db.prepare("SELECT id, name, email, active, must_change FROM users WHERE role = 'admin' ORDER BY name COLLATE NOCASE").all();
+      return { admins: rows.map((u) => ({ id: u.id, name: u.name, email: u.email, active: !!u.active, mustChange: !!u.must_change, me: u.id === me.id })) };
+    }],
+
+    ['POST', /^\/api\/admin\/admins$/, (ctx) => {
       isAdmin(ctx);
-      const u = ctx.db.prepare("SELECT u.id, u.email, h.code FROM users u JOIN hotels h ON h.id = u.hotel_id WHERE u.id = ? AND u.role = 'manager'").get(ctx.params[0]);
-      if (!u) throw new HttpError(404, 'Manager non trovato.');
+      const name = str(ctx.body.name, 60);
+      const email = str(ctx.body.email, 200).toLowerCase();
+      if (!name) throw new HttpError(400, 'Inserisci il nome.');
+      if (!EMAIL_RE.test(email)) throw new HttpError(400, 'Email non valida.');
+      if (ctx.db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) throw new HttpError(409, 'Questa email è già usata da un altro account.');
+      const password = A.generatePassword();
+      const now = Date.now();
+      ctx.db.prepare("INSERT INTO users (id, hotel_id, role, name, email, pass_hash, perms, active, must_change, created_at, updated_at) VALUES (?, NULL, 'admin', ?, ?, ?, '{}', 1, 1, ?, ?)")
+        .run(A.newId(), name, email, A.hashSecret(password), now, now);
+      return { credentials: { email, password, code: '' } };
+    }],
+
+    ['POST', /^\/api\/admin\/users\/([0-9a-f-]{36})\/reset$/, (ctx) => {
+      const me = isAdmin(ctx);
+      if (ctx.params[0] === me.id) throw new HttpError(400, 'Per il tuo account usa "Cambia password".');
+      const u = ctx.db.prepare("SELECT u.id, u.email, COALESCE(h.code, '') AS code FROM users u LEFT JOIN hotels h ON h.id = u.hotel_id WHERE u.id = ? AND u.role IN ('manager', 'admin')").get(ctx.params[0]);
+      if (!u) throw new HttpError(404, 'Utente non trovato.');
       const password = A.generatePassword();
       ctx.db.prepare('UPDATE users SET pass_hash = ?, must_change = 1, active = 1, updated_at = ? WHERE id = ?').run(A.hashSecret(password), Date.now(), u.id);
       A.deleteUserSessions(ctx.db, u.id);

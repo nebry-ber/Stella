@@ -42,16 +42,27 @@ const slug = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toL
 
 const appUrl = () => `${location.origin}${location.pathname}`;
 
-/** Messaggio pronto da mandare al manager con le credenziali provvisorie. */
+/** Messaggio pronto da mandare con le credenziali provvisorie (manager o amministratore). */
 function welcomeText(c, hotelName) {
+  if (!c.code) {
+    return [
+      'Ciao! Ecco il tuo accesso al pannello di gestione di Stella.',
+      '',
+      `Indirizzo: ${appUrl()}#/gestione`,
+      `Email: ${c.email}`,
+      `Password provvisoria: ${c.password}`,
+      '',
+      'Al primo accesso ti verrà chiesto di scegliere una password personale.',
+    ].join('\n');
+  }
   return [
     `Ciao! Ecco l'accesso al registro consumazioni di ${hotelName}.`,
     '',
-    `Indirizzo: ${appUrl()}`,
+    `Indirizzo: ${appUrl()}#/gestione`,
     `Email: ${c.email}`,
     `Password provvisoria: ${c.password}`,
     '',
-    'Entra dalla scheda "Responsabile": al primo accesso ti verrà chiesto di scegliere una password personale.',
+    'Al primo accesso ti verrà chiesto di scegliere una password personale.',
     `Per i dipendenti: link ${appUrl()}#/accedi/${c.code} (li crei tu in Impostazioni → Dipendenti).`,
   ].join('\n');
 }
@@ -88,7 +99,7 @@ async function showCredentials(c, hotelName) {
 export async function renderList() {
   const me = H.user();
   H.setHeader('Pannello di gestione', me.name);
-  const { hotels } = await H.api('GET', 'admin/hotels');
+  const [{ hotels }, { admins }] = await Promise.all([H.api('GET', 'admin/hotels'), H.api('GET', 'admin/admins')]);
   const count = (st) => hotels.filter((h) => h.status === st).length;
   const sorted = hotels.slice().sort((a, b) => {
     const rank = { scaduto: 0, 'in-scadenza': 1, attivo: 2, 'senza-scadenza': 3, disattivata: 4 };
@@ -111,7 +122,16 @@ export async function renderList() {
         </div>
         <span aria-hidden="true">›</span>
       </a></li>`).join('') || '<li class="empty">Nessuna struttura: creane una.</li>'}</ul>
-    ${H.accountCardHtml(me)}`;
+    ${H.accountCardHtml(me)}
+    <section class="card">
+      <h2 class="section-title">Amministratori <small>accesso al pannello</small></h2>
+      <ul class="list">${admins.map((a) => `
+        <li class="list-item static">
+          <div><strong>${H.esc(a.name)}</strong>${a.me ? ' <span class="tag">tu</span>' : ''}${a.mustChange ? ' <span class="tag">password provvisoria</span>' : ''}<div class="muted">${H.esc(a.email)}</div></div>
+          ${a.me ? '' : `<button type="button" class="btn btn-small btn-ghost" data-action="admin-reset" data-id="${H.esc(a.id)}" data-hotel="">Nuova password</button>`}
+        </li>`).join('')}</ul>
+      <button type="button" class="btn btn-secondary btn-block" data-action="admin-new-admin">+ Nuovo amministratore</button>
+    </section>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +307,20 @@ export const actions = {
     if (!r) return;
     const res = await H.api('POST', `admin/hotels/${el.dataset.id}/managers`, { name: r.data.name, email: r.data.email });
     await showCredentials(res.credentials, el.dataset.hotel);
+    H.render();
+  },
+  'admin-new-admin': async () => {
+    const r = await H.openModal({
+      title: 'Nuovo amministratore',
+      html: `<p>Avrà accesso completo al pannello: tutte le strutture e gli abbonamenti.</p>
+        <label class="field"><span>Nome</span><input name="name" maxlength="60" autocomplete="off"></label>
+        <label class="field"><span>Email</span><input name="email" type="email" inputmode="email" autocapitalize="off" autocomplete="off"></label>`,
+      buttons: [{ label: 'Annulla', value: 'cancel', cls: 'btn-ghost' }, { label: 'Crea', value: 'ok', cls: 'btn-primary' }],
+      validate: (_v, d) => (!d.name.trim() ? 'Inserisci il nome.' : !M.isEmail(d.email) ? 'Email non valida.' : null),
+    });
+    if (!r) return;
+    const res = await H.api('POST', 'admin/admins', { name: r.data.name, email: r.data.email });
+    await showCredentials(res.credentials, '');
     H.render();
   },
   'admin-remove-logo': async (el) => {

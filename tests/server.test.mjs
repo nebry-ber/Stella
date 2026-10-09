@@ -201,3 +201,20 @@ test('amministratore: crea struttura, credenziali provvisorie, cambio obbligator
   const list = await admin('GET', '/api/admin/hotels');
   assert.deepEqual(list.body.hotels.map((h) => [h.code, h.status]).sort(), [['bucaneve', 'senza-scadenza'], ['larice', 'disattivata']]);
 });
+
+test('amministratori: nuovo amministratore con password provvisoria, reset di altri ma non di sé', async () => {
+  const admin = client();
+  await admin('POST', '/api/login', { email: 'admin@test.it', password: 'admin-password' });
+  const me = (await admin('GET', '/api/me')).body.user;
+  assert.equal((await admin('POST', `/api/admin/users/${me.id}/reset`, {})).status, 400);
+  const created = await admin('POST', '/api/admin/admins', { name: 'Socio', email: 'socio@test.it' });
+  assert.equal(created.status, 200);
+  const socio = client();
+  assert.equal((await socio('POST', '/api/login', { email: 'socio@test.it', password: created.body.credentials.password })).body.user.mustChange, true);
+  assert.equal((await socio('GET', '/api/admin/hotels')).status, 403); // prima deve cambiare la password
+  const list = await admin('GET', '/api/admin/admins');
+  const sid = list.body.admins.find((a) => a.email === 'socio@test.it').id;
+  const reset = await admin('POST', `/api/admin/users/${sid}/reset`, {});
+  assert.equal(reset.status, 200);
+  assert.equal((await socio('GET', '/api/me')).status, 401);
+});
