@@ -335,6 +335,31 @@ table.simple th, table.simple td { padding: 6px 4px; border-bottom: 1px solid va
 .stay-added { margin-top: 8px; }
 .stay-added .line { background: var(--meadow-pale); box-shadow: none; }
 
+/* ---------- Accesso ---------- */
+body[data-route="accedi"] .tabbar { display: none; }
+body[data-route="accedi"] { padding-bottom: 0; }
+.login-card { max-width: 440px; margin: 8px auto; padding-top: 16px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 14px; background: var(--sky-low); margin-bottom: 16px; }
+.seg button { min-height: 44px; border: 0; border-radius: 10px; background: transparent; font-weight: 650; color: var(--sky-deep); cursor: pointer; }
+.seg button.active { background: #fff; box-shadow: var(--shadow); }
+.login-form { display: flex; flex-direction: column; gap: 4px; }
+.login-hotel { font-size: 18px; font-weight: 700; color: var(--meadow-dark); margin: 0 0 4px; }
+.name-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin: 8px 0 14px; }
+.name-btn { min-height: 60px; font-size: 17px; }
+
+/* ---------- Dipendenti e permessi ---------- */
+.share-box { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: var(--sky-low); margin: 8px 0 4px; }
+.share-box > div:first-child { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.share-box strong { font-size: 18px; }
+.share-box input { min-height: 40px; width: 100%; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line); background: #fff; font-size: 13px; color: var(--muted); }
+.share-box .actions { margin: 0; }
+.list-item.inactive { opacity: .6; }
+.perms { border: 1.5px solid var(--line); border-radius: 12px; padding: 8px 12px 10px; margin: 4px 0 0; }
+.perms legend { color: var(--muted); font-size: 14px; padding: 0 4px; }
+.check { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 16px; }
+.check input { width: 22px; height: 22px; accent-color: var(--meadow); }
+.no-perm { flex: 1; font-size: 14px; color: #fff; opacity: .9; text-align: center; }
+
 /* ---------- Tab bar ---------- */
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;

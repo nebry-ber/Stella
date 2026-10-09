@@ -34,7 +34,7 @@ Serve solo il repository su GitHub: non c'è niente da compilare né da installa
 
 GitHub Pages usa HTTPS, che è necessario per l'installazione e per il funzionamento offline.
 
-**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.2.1'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
+**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.3.0'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
 
 **Provare in locale** (facoltativo, per chi sviluppa): da questa cartella, con un qualsiasi server statico, ad esempio
 `python3 -m http.server 8000` e poi apri `http://localhost:8000`.
@@ -126,12 +126,59 @@ Il riepilogo **non è un documento fiscale**: scontrino o fattura vanno emessi c
 
 ---
 
+## 4. Versione con server (sincronizzazione automatica)
+
+Con il server Stella su un VPS l'app non ha più bisogno di Drive: ogni modifica arriva sugli altri telefoni in pochi secondi. Si continua a lavorare anche senza rete; le modifiche partono appena torna.
+
+**Chi entra e come**
+
+| Chi | Come entra | Cosa può fare |
+|---|---|---|
+| Manager | email + password | tutto: listino, camere, dati struttura, dipendenti e permessi |
+| Dipendente | link della struttura → sceglie il suo nome → PIN | registrare consumazioni; chiudere conti, cambiare prezzi, camere o dati struttura solo se il manager glielo permette |
+
+Il manager crea i dipendenti in **Impostazioni → Dipendenti** (nome, PIN, permessi) e manda loro il **link di accesso** (pulsante *Copia link* o *Condividi*). Cambiare il PIN o disattivare un dipendente lo fa uscire da tutti i dispositivi. **Esci** toglie i dati dal telefono (restano sul server).
+
+### Installazione sul VPS (una volta sola)
+
+1. **DNS su Cloudflare** → *DNS* → *Add record*: tipo **A**, nome **app**, indirizzo IPv4 del VPS, stato proxy **Solo DNS** (nuvola grigia). Salva.
+2. **Console Oracle Cloud** → *Networking* → *Virtual cloud networks* → la tua VCN → *Security Lists* → *Default Security List* → *Add Ingress Rules*: sorgente `0.0.0.0/0`, protocollo TCP, porte di destinazione **80** e poi **443**.
+3. **Collegati al VPS** dal tuo computer con la chiave scaricata quando hai creato l'istanza:
+   `ssh -i percorso/della/chiave ubuntu@IP-DEL-VPS` (su Oracle Linux l'utente è `opc` invece di `ubuntu`).
+4. **Lancia l'installazione** e rispondi alle domande (dominio, email, nome struttura, codice struttura, manager):
+   ```
+   curl -fsSL https://raw.githubusercontent.com/nebry-ber/Stella/refs/heads/claude/festive-archimedes-xgdk4y/deploy/install.sh | sudo bash
+   ```
+   Alla fine compaiono **email e password del manager**: annotale e cambia la password al primo accesso.
+5. Apri **https://app.cumulonembo.com**, scheda *Manager*, e accedi.
+
+Lo script installa Docker, apre il firewall interno del VPS, avvia l'app con **Caddy** (certificato HTTPS automatico e gratuito) e programma un **backup del database ogni notte** in `/opt/stella/data/backups` (tiene gli ultimi 30).
+
+**Aggiornare** all'ultima versione: `sudo /opt/stella/deploy/update.sh` (fa prima un backup).
+
+**Comandi utili** (dal VPS, nella cartella `/opt/stella`):
+- `sudo docker compose exec app node server/cli.js list`: strutture e utenti
+- `sudo docker compose exec app node server/cli.js reset-password email@esempio.it`: nuova password a un manager
+- `sudo docker compose exec app node server/cli.js add-hotel`: aggiunge un'altra struttura
+- `sudo docker compose logs -f app`: messaggi del server
+
+Nel repository non ci sono password né dati: stanno solo nel file `.env` e nella cartella `data/` del VPS.
+
+---
+
 ## Per chi sviluppa
 
 Solo file statici: HTML, CSS e JavaScript (moduli ES), nessuna dipendenza, nessun build.
 
 ```
 index.html             struttura della pagina, intestazione con montagne, tab bar
+js/sync.js             collegamento al server: accesso, sincronizzazione automatica, outbox
+server/index.js        server HTTP: file dell'app + API (accessi, sincronizzazione, dipendenti)
+server/sync.js         unione dei dati sul server e controllo dei permessi
+server/auth.js         password/PIN (scrypt), sessioni, blocco dei tentativi
+server/db.js           database SQLite (node:sqlite, incluso in Node 22)
+server/cli.js          comandi di amministrazione (init, add-hotel, reset-password, backup)
+deploy/                install.sh, update.sh, Caddyfile; Dockerfile e docker-compose.yml nella radice
 css/app.css            stile (palette cielo / prati / neve / roccia), stampa
 js/app.js              interfaccia: schermate, eventi, navigazione (#/…)
 js/store.js            servizio dati: tutte le operazioni (aggiungi, chiudi conto, importa…)
@@ -158,4 +205,8 @@ tests/model.test.mjs   test della logica (node --test)
 
 Camere, postazioni e prodotti iniziali hanno id fissi (`R1`…`R30`, `E1`…`E10`, `p001`…), così dispositivi inizializzati separatamente non creano doppioni alla prima sincronizzazione.
 
-**Test:** `node --test` dalla cartella del progetto (Node 18 o successivo).
+**Modalità:** l'app capisce da sola dove gira. Servita dal server Stella usa la sincronizzazione automatica (`/api/sync`: invia l'outbox, riceve le novità dopo un cursore, vince la modifica più recente, i permessi sono controllati dal server). Servita da un sito statico (es. GitHub Pages) funziona senza server con esportazione/importazione via file.
+
+**Server in locale:** `node server/cli.js init` (domande guidate), poi `npm start` e apri `http://localhost:3000`.
+
+**Test:** `npm test` dalla cartella del progetto (Node 22.13 o successivo): logica, server, permessi e sincronizzazione.

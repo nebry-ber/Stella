@@ -8,10 +8,24 @@
  */
 
 const DB_NAME = 'bucaneve';
-const DB_VERSION = 2; // 2: aggiunto l'archivio "config" (dati della struttura)
+const DB_VERSION = 3; // 2: archivio "config" (dati struttura) · 3: archivio "outbox"
 
 /** Archivi (tabelle) usati dall'app. Tutti hanno chiave primaria "id". */
-export const STORES = ['locations', 'products', 'consumptions', 'accounts', 'config', 'meta'];
+export const STORES = ['locations', 'products', 'consumptions', 'accounts', 'config', 'meta', 'outbox'];
+
+/** Archivi condivisi tra dispositivi (sincronizzati con il server o via file). */
+export const SYNCED_STORES = ['locations', 'products', 'consumptions', 'accounts', 'config'];
+
+/**
+ * "outbox": elenco delle modifiche fatte su questo dispositivo e non ancora
+ * inviate al server. Ogni scrittura locale su un archivio condiviso aggiunge
+ * qui una voce, nella stessa transazione; le scritture che arrivano dal server
+ * (remote: true) no. Il motore di sincronizzazione (sync.js) la svuota.
+ */
+let writeListener = null;
+export function setWriteListener(fn) {
+  writeListener = fn;
+}
 
 let dbPromise = null;
 
@@ -68,22 +82,45 @@ export async function get(store, id) {
  * Scrive più record in più archivi in un'unica transazione atomica:
  * o vengono salvati tutti, o nessuno.
  * @param {Object<string, Array<object>>} changes es. { accounts: [...], consumptions: [...] }
+ * @param {{remote?: boolean}} options remote: true per i dati arrivati dal server
  */
-export async function putMany(changes) {
+export async function putMany(changes, { remote = false } = {}) {
+  const names = Object.keys(changes).filter((k) => changes[k] && changes[k].length);
+  if (!names.length) return;
+  const track = !remote && names.some((n) => SYNCED_STORES.includes(n));
+  const db = await open();
+  const tx = db.transaction(track ? [...names, 'outbox'] : names, 'readwrite');
+  for (const name of names) {
+    const os = tx.objectStore(name);
+    for (const rec of changes[name]) os.put(rec);
+    if (track && SYNCED_STORES.includes(name)) {
+      const ob = tx.objectStore('outbox');
+      for (const rec of changes[name]) ob.put({ id: `${name}/${rec.id}`, store: name, recId: rec.id });
+    }
+  }
+  await txDone(tx);
+  if (track && writeListener) writeListener();
+}
+
+/** Elimina record per id: { archivio: [id, ...] }. */
+export async function deleteMany(changes) {
   const names = Object.keys(changes).filter((k) => changes[k] && changes[k].length);
   if (!names.length) return;
   const db = await open();
   const tx = db.transaction(names, 'readwrite');
-  for (const name of names) {
-    const os = tx.objectStore(name);
-    for (const rec of changes[name]) os.put(rec);
-  }
+  for (const name of names) for (const id of changes[name]) tx.objectStore(name).delete(id);
   await txDone(tx);
 }
 
+/** Numero di record in un archivio. */
+export async function count(store) {
+  const db = await open();
+  return done(db.transaction(store).objectStore(store).count());
+}
+
 /** Scrive un singolo record. */
-export function put(store, rec) {
-  return putMany({ [store]: [rec] });
+export function put(store, rec, options) {
+  return putMany({ [store]: [rec] }, options);
 }
 
 /** Svuota gli archivi indicati (di default tutti). */

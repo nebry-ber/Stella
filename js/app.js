@@ -9,8 +9,9 @@
 
 import * as S from './store.js';
 import * as M from './model.js';
+import * as Sync from './sync.js';
 
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.3.0';
 const UNLOCK_MS = 5 * 60 * 1000; // dopo il PIN, impostazioni sbloccate per 5 minuti
 
 const $view = document.getElementById('view');
@@ -28,6 +29,8 @@ const ui = {
   importResult: null,
   pendingToast: null, // avviso da mostrare dopo il prossimo cambio di schermata
   stay: { loc: null, nights: 1, persons: 1, prices: {} }, // campi del riquadro "Voci di soggiorno"
+  login: { tab: 'staff', code: '', hotelName: '', staff: null, selected: null }, // schermata di accesso
+  pendingRender: false, // aggiornamento rimandato perché l'utente sta scrivendo
 };
 
 
@@ -199,7 +202,27 @@ function exportStatus() {
   };
 }
 
+/** Stato della sincronizzazione con il server, in parole. */
+function syncStatus() {
+  const st = Sync.getState();
+  const n = st.pending;
+  const waiting = n ? ` · ${n === 1 ? '1 modifica' : `${n} modifiche`} in attesa` : '';
+  if (st.status === 'offline') return { warn: true, text: 'Offline: lavori sul dispositivo', detail: `Le modifiche partono appena torna la rete${waiting}.` };
+  if (st.status === 'error') return { warn: true, text: 'Sincronizzazione non riuscita', detail: `${st.error}${waiting}` };
+  if (!st.lastSyncAt) return { warn: false, text: 'Collegamento al server…', detail: '' };
+  return { warn: false, text: 'Sincronizzato', detail: `Ultimo aggiornamento alle ${M.formatTime(st.lastSyncAt)}${waiting}` };
+}
+
 function exportBanner(withButton) {
+  if (Sync.isServer()) {
+    const st = syncStatus();
+    return `
+    <section class="export-banner ${st.warn ? 'warn' : 'ok'}" id="sync-banner" data-testid="sync-banner">
+      <div class="export-icon" aria-hidden="true">${st.warn ? '!' : '✓'}</div>
+      <div class="export-text"><strong>${esc(st.text)}</strong><span>${esc(st.detail)}</span></div>
+      ${withButton && st.warn ? '<button type="button" class="btn btn-small" data-action="sync-now">Riprova</button>' : ''}
+    </section>`;
+  }
   const st = exportStatus();
   return `
     <section class="export-banner ${st.warn ? 'warn' : 'ok'}">
@@ -210,7 +233,14 @@ function exportBanner(withButton) {
 }
 
 function refreshExportDot() {
-  document.getElementById('export-dot').hidden = !exportStatus().warn;
+  document.getElementById('export-dot').hidden = !(Sync.isServer() ? syncStatus().warn : exportStatus().warn);
+}
+
+/** Aggiorna banner e pallino quando cambia lo stato della sincronizzazione. */
+function refreshSyncIndicators() {
+  refreshExportDot();
+  const banner = document.getElementById('sync-banner');
+  if (banner) banner.outerHTML = exportBanner(currentPath() === '/');
 }
 
 // ---------------------------------------------------------------------------
@@ -218,7 +248,8 @@ function refreshExportDot() {
 // ---------------------------------------------------------------------------
 
 async function renderGrid() {
-  setHeader('Bucaneve', `Ronzone · ${S.getSettings().deviceName}`);
+  const u = Sync.user();
+  setHeader(u ? u.hotel.name : 'Bucaneve', u ? `${u.name}` : `Ronzone · ${S.getSettings().deviceName}`);
   const [locs, open] = await Promise.all([S.listLocations(), S.openSummary()]);
   let openCount = 0;
   let openTotal = 0;
@@ -445,7 +476,9 @@ async function renderCheckout(id) {
     ${lines.length ? sendButtonsHtml('open', id) : ''}
     <div class="sticky-bar no-print">
       <button type="button" class="btn btn-secondary" data-action="print" data-title="Riepilogo ${esc(M.locationName(loc))}">Stampa / salva PDF</button>
-      <button type="button" class="btn btn-primary" data-action="close-account" data-id="${esc(id)}" ${lines.length ? '' : 'disabled'}>Chiudi conto</button>
+      ${Sync.can('closeAccounts')
+        ? `<button type="button" class="btn btn-primary" data-action="close-account" data-id="${esc(id)}" ${lines.length ? '' : 'disabled'}>Chiudi conto</button>`
+        : '<span class="no-perm">Per chiudere il conto chiama il responsabile</span>'}
     </div>`;
 }
 
@@ -541,6 +574,7 @@ function importSummaryHtml(r) {
 async function renderData() {
   setHeader('Dati e sincronizzazione', S.getSettings().deviceName);
   const canShare = !!(navigator.canShare && navigator.canShare({ files: [new File(['{}'], 'x.json', { type: 'application/json' })] }));
+  if (Sync.isServer()) return renderDataServer(canShare);
   $view.innerHTML = `
     ${exportBanner(false)}
     <section class="card">
@@ -564,6 +598,36 @@ async function renderData() {
       ${rangeForm('csv', ui.csv.from, ui.csv.to)}
       <button type="button" class="btn btn-secondary btn-block" data-action="csv-data">Esporta CSV</button>
     </section>`;
+}
+
+/** Scheda Dati con il server: stato della sincronizzazione, CSV e copia di sicurezza. */
+function renderDataServer(canShare) {
+  const st = Sync.getState();
+  const manager = Sync.user()?.role === 'manager';
+  $view.innerHTML = `
+    ${exportBanner(false)}
+    <section class="card">
+      <h2 class="section-title">Sincronizzazione automatica</h2>
+      <p>Ogni modifica viene inviata al server in pochi secondi e arriva sugli altri telefoni. Senza rete puoi continuare a lavorare: le modifiche restano in attesa e partono da sole.</p>
+      <p class="muted">Modifiche in attesa: <strong data-testid="pending">${st.pending}</strong>${st.lastSyncAt ? ` · ultimo aggiornamento ${M.formatDateTime(st.lastSyncAt)}` : ''}</p>
+      <button type="button" class="btn btn-primary btn-block" data-action="sync-now">Sincronizza ora</button>
+    </section>
+    <section class="card">
+      <h2 class="section-title">Esporta CSV per Excel</h2>
+      <p>Conti chiusi nel periodo, una riga per consumazione.</p>
+      ${rangeForm('csv', ui.csv.from, ui.csv.to)}
+      <button type="button" class="btn btn-secondary btn-block" data-action="csv-data">Esporta CSV</button>
+    </section>
+    ${manager ? `
+    <section class="card">
+      <h2 class="section-title">Copia di sicurezza <small>facoltativa</small></h2>
+      <p>Il server fa già un backup ogni notte. Qui puoi scaricare una copia dei dati, o importare un file esportato dalla versione senza server (i dati vengono uniti e inviati al server).</p>
+      <button type="button" class="btn btn-secondary btn-block" data-action="export-json">Scarica copia (JSON)</button>
+      ${canShare ? '<button type="button" class="btn btn-ghost btn-block" data-action="share-json">Condividi copia…</button>' : ''}
+      <label class="btn btn-ghost btn-block file-btn">Importa un file
+        <input type="file" accept=".json,application/json" data-change="import-file" hidden></label>
+    </section>
+    ${ui.importResult ? importSummaryHtml(ui.importResult) : ''}` : ''}`;
 }
 
 async function doExport(share) {
@@ -630,6 +694,12 @@ async function renderSettings() {
     return;
   }
   const settings = S.getSettings();
+  const server = Sync.isServer();
+  const me = Sync.user();
+  let staffInfo = null;
+  if (server && me?.role === 'manager') {
+    try { staffInfo = await Sync.api('GET', 'staff'); } catch (e) { staffInfo = { error: e.message }; }
+  }
   const [products, locs, open, stayRates, hotel] = await Promise.all([
     S.listProducts({ includeInactive: true }), S.listLocations({ includeInactive: true }), S.openSummary(), S.listStayRates(), S.getHotel(),
   ]);
@@ -657,8 +727,11 @@ async function renderSettings() {
       </li>`;
   };
 
+  const show = { hotel: Sync.can('editSettings'), prices: Sync.can('editPrices'), rooms: Sync.can('editRooms') };
   $view.innerHTML = `
-    <section class="card">
+    ${server ? accountCardHtml(me) : ''}
+    ${staffInfo ? staffCardHtml(staffInfo) : ''}
+    ${show.hotel ? `<section class="card">
       <h2 class="section-title">Dati struttura <small>intestazione della ricevuta</small></h2>
       <div class="logo-box">
         ${hotel.logo ? `<img src="${esc(hotel.logo)}" alt="Logo attuale">` : '<span class="muted">Nessun logo: in ricevuta compare il nome.</span>'}
@@ -681,9 +754,9 @@ async function renderSettings() {
       ].map(([k, label, ph]) => `
         <label class="field"><span>${label}</span>
           <input type="${k === 'email' ? 'email' : 'text'}" id="hotel-${k}" data-change="hotel-field" data-field="${k}" value="${esc(hotel[k])}" placeholder="${esc(ph)}" maxlength="120" autocomplete="off"></label>`).join('')}
-    </section>
+    </section>` : ''}
 
-    <section class="card">
+    ${server ? '' : `<section class="card">
       <h2 class="section-title">Questo dispositivo</h2>
       <label class="field"><span>Nome dispositivo <small>(compare nei file esportati, es. BAR, RECEPTION)</small></span>
         <input type="text" data-change="device-name" value="${esc(settings.deviceName)}" maxlength="30" autocomplete="off"></label>
@@ -696,17 +769,17 @@ async function renderSettings() {
         <button type="button" class="btn btn-secondary" data-action="set-pin">${S.hasPin() ? 'Cambia PIN' : 'Imposta PIN'}</button>
         ${S.hasPin() ? '<button type="button" class="btn btn-ghost danger" data-action="remove-pin">Rimuovi PIN</button>' : ''}
       </div>
-    </section>
+    </section>`}
 
-    <section class="card">
+    ${show.prices ? `<section class="card">
       <h2 class="section-title">Listino <small>${active.length} prodotti</small></h2>
       <button type="button" class="btn btn-primary btn-block" data-action="new-product">+ Nuovo prodotto</button>
       ${listino}
       ${inactive.length ? `<details><summary>Prodotti disattivati (${inactive.length})</summary><ul class="list">${inactive.map((p) => `
         <li><button type="button" class="list-item" data-action="edit-product" data-id="${esc(p.id)}"><div>${esc(p.name)}</div><div class="list-amt">${euro(p.price)}</div></button></li>`).join('')}</ul></details>` : ''}
-    </section>
+    </section>` : ''}
 
-    <section class="card">
+    ${show.hotel ? `<section class="card">
       <h2 class="section-title">Voci di soggiorno</h2>
       <p class="muted">Tariffe proposte nel check-out delle camere (modificabili anche lì, conto per conto).</p>
       <ul class="list">${Object.entries(stayRates).map(([type, r]) => r ? `
@@ -714,9 +787,9 @@ async function renderSettings() {
           <div>${esc(r.name)}<div class="muted">€ ${M.STAY_TYPES[type].unit} · ${r.vat === 0 ? 'fuori campo IVA' : `IVA ${r.vat}%`}</div></div>
           <div class="list-amt">${r.price ? euro(r.price) : 'al check-out'}</div>
         </button></li>` : '').join('')}</ul>
-    </section>
+    </section>` : ''}
 
-    <section class="card">
+    ${show.rooms ? `<section class="card">
       <h2 class="section-title">Camere</h2>
       <p class="muted">Tocca un numero per modificarlo. "Nascondi" toglie la casella dalla griglia (non possibile con un conto aperto).</p>
       <ul class="loc-list">${locs.filter((l) => l.kind === 'camera').map(locRow).join('')}</ul>
@@ -724,15 +797,100 @@ async function renderSettings() {
       <h2 class="section-title">Postazioni extra</h2>
       <ul class="loc-list">${locs.filter((l) => l.kind === 'extra').map(locRow).join('')}</ul>
       <button type="button" class="btn btn-secondary btn-block" data-action="add-location" data-kind="extra">+ Aggiungi postazione</button>
-    </section>
+    </section>` : ''}
 
-    <section class="card danger-zone">
+    ${server ? '' : `<section class="card danger-zone">
       <h2 class="section-title">Cancella dati</h2>
       <p>Elimina tutti i dati salvati su questo dispositivo (conti aperti, storico, listino). Esporta prima i dati!</p>
       <button type="button" class="btn btn-danger btn-block" data-action="reset">Cancella tutti i dati locali</button>
-    </section>
+    </section>`}
 
-    <p class="muted center">Bucaneve · versione ${APP_VERSION}<br>I dati restano solo su questo dispositivo finché non li esporti.</p>`;
+    <p class="muted center">Versione ${APP_VERSION}<br>${server ? 'Dati sincronizzati con il server.' : 'I dati restano solo su questo dispositivo finché non li esporti.'}</p>`;
+}
+
+const ROLE_LABEL = { manager: 'Manager', staff: 'Dipendente', admin: 'Amministratore' };
+
+/** "Il mio account": chi è collegato, cambio password, uscita. */
+function accountCardHtml(me) {
+  return `
+    <section class="card">
+      <h2 class="section-title">Il mio account</h2>
+      <p><strong>${esc(me.name)}</strong> · ${ROLE_LABEL[me.role] || me.role}<br><span class="muted">${esc(me.hotel?.name || '')}${me.email ? ` · ${esc(me.email)}` : ''}</span></p>
+      <div class="actions">
+        ${me.role !== 'staff' ? '<button type="button" class="btn btn-secondary" data-action="change-password">Cambia password</button>' : ''}
+        <button type="button" class="btn btn-ghost danger" data-action="logout">Esci</button>
+      </div>
+    </section>`;
+}
+
+/** Dipendenti (solo manager): elenco, link di accesso, nuovo dipendente. */
+function staffCardHtml(info) {
+  if (info.error) {
+    return `<section class="card"><h2 class="section-title">Dipendenti</h2><p class="muted">${esc(info.error)} La gestione dei dipendenti richiede la connessione.</p></section>`;
+  }
+  const link = `${location.origin}${location.pathname}#/accedi/${info.code}`;
+  ui.staffInfo = info;
+  return `
+    <section class="card">
+      <h2 class="section-title">Dipendenti <small>${info.staff.filter((s) => s.active).length} attivi</small></h2>
+      <p>Per entrare dal proprio telefono il dipendente apre il link, sceglie il suo nome e scrive il PIN.</p>
+      <div class="share-box">
+        <div><span class="muted">Codice struttura</span><strong class="mono" data-testid="hotel-code">${esc(info.code)}</strong></div>
+        <input type="text" readonly value="${esc(link)}" id="access-link" aria-label="Link di accesso">
+        <div class="actions">
+          <button type="button" class="btn btn-small btn-secondary" data-action="copy-link">Copia link</button>
+          ${navigator.share ? '<button type="button" class="btn btn-small btn-ghost" data-action="share-link">Condividi…</button>' : ''}
+        </div>
+      </div>
+      <button type="button" class="btn btn-primary btn-block" data-action="new-staff">+ Nuovo dipendente</button>
+      <ul class="list staff-list">${info.staff.map((st) => `
+        <li><button type="button" class="list-item ${st.active ? '' : 'inactive'}" data-action="edit-staff" data-id="${esc(st.id)}">
+          <div>${esc(st.name)}${st.active ? '' : ' <span class="tag">disattivato</span>'}
+            <div class="muted">${Object.entries(info.permissions).filter(([k]) => st.perms[k]).map(([, l]) => esc(l)).join(' · ') || 'Solo registrare consumazioni'}</div></div>
+          <span aria-hidden="true">›</span>
+        </button></li>`).join('') || '<li class="muted">Nessun dipendente: aggiungine uno.</li>'}</ul>
+    </section>`;
+}
+
+/** Finestra per creare o modificare un dipendente. */
+async function staffDialog(id) {
+  const info = ui.staffInfo;
+  const st = id ? info.staff.find((x) => x.id === id) : null;
+  const perms = st ? st.perms : { closeAccounts: true };
+  const buttons = [{ label: 'Annulla', value: 'cancel', cls: 'btn-ghost' }];
+  if (st) buttons.push({ label: st.active ? 'Disattiva' : 'Riattiva', value: 'toggle', cls: 'btn-ghost danger' });
+  buttons.push({ label: 'Salva', value: 'save', cls: 'btn-primary' });
+  const r = await openModal({
+    title: st ? `Dipendente: ${st.name}` : 'Nuovo dipendente',
+    html: `
+      <label class="field"><span>Nome (come compare nella schermata di accesso)</span>
+        <input name="name" type="text" maxlength="40" autocomplete="off" value="${esc(st?.name || '')}"></label>
+      <label class="field"><span>${st ? 'Nuovo PIN (lascia vuoto per non cambiarlo)' : 'PIN (4-6 cifre)'}</span>
+        <input name="pin" class="pin-input" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password"></label>
+      <fieldset class="perms"><legend>Può anche:</legend>
+        ${Object.entries(info.permissions).map(([k, label]) => `
+          <label class="check"><input type="checkbox" name="perm-${k}" ${perms[k] ? 'checked' : ''}> ${esc(label)}</label>`).join('')}
+      </fieldset>`,
+    buttons,
+    validate: (value, d) => {
+      if (value === 'toggle') return null;
+      if (!d.name.trim()) return 'Inserisci il nome.';
+      if ((!st || d.pin) && !/^\d{4,6}$/.test(d.pin)) return 'Il PIN deve avere da 4 a 6 cifre.';
+      return null;
+    },
+  });
+  if (!r) return;
+  if (r.value === 'toggle') {
+    await Sync.api('PATCH', `staff/${st.id}`, { active: !st.active });
+    toast(st.active ? `${st.name} disattivato: non può più accedere` : `${st.name} riattivato`);
+  } else {
+    const body = { name: r.data.name.trim(), perms: Object.fromEntries(Object.keys(info.permissions).map((k) => [k, r.data[`perm-${k}`] === 'on'])) };
+    if (r.data.pin) body.pin = r.data.pin;
+    if (st) await Sync.api('PATCH', `staff/${st.id}`, body);
+    else await Sync.api('POST', 'staff', body);
+    toast(st ? 'Dipendente aggiornato' : `${body.name} aggiunto`);
+  }
+  render();
 }
 
 async function editProduct(id) {
@@ -788,6 +946,104 @@ async function summaryData(source, id) {
     text: M.buildTextSummary({ hotel: M.hotelTitle(hotel), name, guestName, lines, closedAt }),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Accesso (solo con il server)
+// ---------------------------------------------------------------------------
+
+async function renderLogin(codeParam) {
+  setHeader('Accesso', 'Registro consumazioni');
+  const L = ui.login;
+  if (codeParam && codeParam !== L.code) Object.assign(L, { tab: 'staff', code: codeParam, staff: null, selected: null });
+  // Arrivati dal link del manager: si mostrano subito i nomi della struttura
+  if (codeParam && L.tab === 'staff' && !L.staff) {
+    try {
+      const r = await Sync.api('GET', `hotel/${encodeURIComponent(codeParam)}/staff`);
+      Object.assign(L, { hotelName: r.hotel.name, staff: r.staff });
+    } catch (e) { toast(e.message, { kind: 'error' }); }
+  }
+  const tabs = `
+    <div class="seg" role="tablist">
+      <button type="button" role="tab" class="${L.tab === 'staff' ? 'active' : ''}" aria-selected="${L.tab === 'staff'}" data-action="login-tab" data-tab="staff">Dipendente</button>
+      <button type="button" role="tab" class="${L.tab === 'manager' ? 'active' : ''}" aria-selected="${L.tab === 'manager'}" data-action="login-tab" data-tab="manager">Manager</button>
+    </div>`;
+  let body;
+  if (L.tab === 'manager') {
+    body = `
+      <form data-submit="login-manager" class="login-form" novalidate>
+        <label class="field"><span>Email</span><input name="email" type="email" inputmode="email" autocomplete="username" autocapitalize="off" required></label>
+        <label class="field"><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+        <button type="submit" class="btn btn-primary btn-block">Accedi</button>
+      </form>`;
+  } else if (!L.staff) {
+    body = `
+      <form data-submit="login-code" class="login-form" novalidate>
+        <label class="field"><span>Codice struttura <small>(te lo dà il responsabile)</small></span>
+          <input name="code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(L.code)}" placeholder="es. bucaneve" required></label>
+        <button type="submit" class="btn btn-primary btn-block">Avanti</button>
+      </form>`;
+  } else if (!L.selected) {
+    body = `
+      <p class="login-hotel">${esc(L.hotelName)}</p>
+      <p class="muted">Chi sei?</p>
+      <div class="name-grid">${L.staff.map((st) => `<button type="button" class="btn btn-ghost name-btn" data-action="login-pick" data-id="${esc(st.id)}">${esc(st.name)}</button>`).join('') || '<p class="muted">Nessun dipendente registrato: chiedi al responsabile.</p>'}</div>
+      <button type="button" class="btn btn-small btn-ghost" data-action="login-back">Cambia struttura</button>`;
+  } else {
+    const who = L.staff.find((x) => x.id === L.selected);
+    body = `
+      <p class="login-hotel">${esc(L.hotelName)}</p>
+      <form data-submit="login-pin" class="login-form" novalidate>
+        <label class="field"><span>PIN di <strong>${esc(who?.name || '')}</strong></span>
+          <input name="pin" class="pin-input" type="password" inputmode="numeric" autocomplete="current-password" maxlength="6" required></label>
+        <button type="submit" class="btn btn-primary btn-block">Entra</button>
+      </form>
+      <button type="button" class="btn btn-small btn-ghost" data-action="login-unpick">Non sono ${esc(who?.name || '')}</button>`;
+  }
+  $view.innerHTML = `<section class="card login-card">${tabs}${body}</section>`;
+  $view.querySelector('input')?.focus();
+}
+
+/** Dopo l'accesso: prepara il dispositivo e scarica i dati della struttura. */
+async function afterLogin(user) {
+  $view.innerHTML = '<p class="loading">Scarico i dati della struttura…</p>';
+  await S.useServerIdentity(user);
+  await Sync.onLogin(user, { resetLocal: S.resetSyncedData, seedIfEmpty: S.seedIfEmpty });
+  Object.assign(ui.login, { staff: null, selected: null });
+  ui.unlockedUntil = 0;
+  ui.pendingToast = [`Ciao ${user.name}!`];
+  go('#/');
+}
+
+const submits = {
+  'login-code': async (form) => {
+    const code = form.code.value.trim().toLowerCase();
+    if (!code) { toast('Scrivi il codice della struttura.', { kind: 'error' }); return; }
+    const r = await Sync.api('GET', `hotel/${encodeURIComponent(code)}/staff`);
+    Object.assign(ui.login, { code, hotelName: r.hotel.name, staff: r.staff, selected: null });
+    render();
+  },
+  'login-pin': async (form) => {
+    const { user } = await Sync.api('POST', 'login-pin', { code: ui.login.code, userId: ui.login.selected, pin: form.pin.value });
+    await afterLogin(user);
+  },
+  'login-manager': async (form) => {
+    const { user } = await Sync.api('POST', 'login', { email: form.email.value.trim(), password: form.password.value });
+    await afterLogin(user);
+  },
+};
+
+document.addEventListener('submit', async (e) => {
+  const form = e.target.closest('form[data-submit]');
+  if (!form) return;
+  e.preventDefault();
+  const btn = form.querySelector('[type="submit"]');
+  if (btn?.disabled) return;
+  if (btn) btn.disabled = true;
+  try { await submits[form.dataset.submit](form); } catch (err) {
+    handleError(err);
+    if (form.pin) form.pin.value = '';
+  } finally { if (btn && btn.isConnected) btn.disabled = false; }
+});
 
 function renderNotFound() {
   setHeader('Non trovato', '', '#/');
@@ -1020,6 +1276,50 @@ const actions = {
     go('#/');
   },
 
+  'login-tab': (el) => { ui.login.tab = el.dataset.tab; render(); },
+  'login-pick': (el) => { ui.login.selected = el.dataset.id; render(); },
+  'login-unpick': () => { ui.login.selected = null; render(); },
+  'login-back': () => { Object.assign(ui.login, { staff: null, selected: null }); render(); },
+
+  'sync-now': async () => { await Sync.syncNow(); const st = Sync.getState(); toast(st.status === 'ok' ? 'Dati aggiornati' : syncStatus().text, { kind: st.status === 'ok' ? '' : 'error' }); render(); },
+
+  logout: async () => {
+    const { pending } = Sync.getState();
+    const warn = pending ? `<br><strong>Attenzione:</strong> ${pending} modifiche non sono ancora arrivate al server. Prova prima a sincronizzare con la rete attiva, altrimenti andranno perse.` : '';
+    if (!(await confirmDialog('Uscire?', `I dati della struttura verranno tolti da questo telefono (restano sul server).${warn}`, 'Esci', !!pending))) return;
+    await Sync.logout({ resetLocal: S.resetSyncedData });
+    go('#/accedi');
+  },
+
+  'change-password': async () => {
+    const r = await openModal({
+      title: 'Cambia password',
+      html: `
+        <label class="field"><span>Password attuale</span><input name="current" type="password" autocomplete="current-password"></label>
+        <label class="field"><span>Nuova password (almeno 10 caratteri)</span><input name="next" type="password" autocomplete="new-password"></label>
+        <label class="field"><span>Ripeti la nuova password</span><input name="next2" type="password" autocomplete="new-password"></label>`,
+      buttons: [{ label: 'Annulla', value: 'cancel', cls: 'btn-ghost' }, { label: 'Salva', value: 'ok', cls: 'btn-primary' }],
+      validate: async (_v, d) => {
+        if (d.next.length < 10) return 'La nuova password deve avere almeno 10 caratteri.';
+        if (d.next !== d.next2) return 'Le due password non coincidono.';
+        try { await Sync.api('POST', 'password', { current: d.current, next: d.next }); } catch (e) { return e.message; }
+        return null;
+      },
+    });
+    if (r) toast('Password cambiata');
+  },
+
+  'new-staff': () => staffDialog(null),
+  'edit-staff': (el) => staffDialog(el.dataset.id),
+
+  'copy-link': async () => {
+    const input = document.getElementById('access-link');
+    try { await navigator.clipboard.writeText(input.value); toast('Link copiato'); } catch { input.select(); toast('Seleziona e copia il link'); }
+  },
+  'share-link': async () => {
+    try { await navigator.share({ title: 'Accesso registro consumazioni', text: 'Apri il link, scegli il tuo nome e inserisci il PIN:', url: document.getElementById('access-link').value }); } catch (e) { if (e.name !== 'AbortError') throw e; }
+  },
+
   'apply-update': () => {
     updateRequested = true;
     waitingWorker?.postMessage('SKIP_WAITING');
@@ -1065,7 +1365,8 @@ const changes = {
 };
 
 function handleError(e) {
-  console.error(e);
+  // Gli errori "previsti" del server (PIN sbagliato, permessi…) sono solo messaggi per l'utente
+  if (!(e instanceof Sync.ApiError && e.status >= 400 && e.status < 500)) console.error(e);
   toast(e?.message || 'Si è verificato un errore', { kind: 'error', ms: 6000 });
 }
 
@@ -1105,6 +1406,7 @@ const routes = [
   [/^\/conto\/([^/]+)$/, renderAccount, 'storico'],
   [/^\/dati$/, renderData, 'dati'],
   [/^\/impostazioni$/, renderSettings, 'impostazioni'],
+  [/^\/accedi(?:\/([a-z0-9-]+))?$/, renderLogin, 'accedi'],
 ];
 
 function currentPath() {
@@ -1119,6 +1421,10 @@ function currentParam() {
 let lastPath = null;
 async function render() {
   const path = currentPath();
+  // Con il server: senza accesso si va alla schermata di login, e viceversa
+  const isLogin = path.startsWith('/accedi');
+  if (Sync.isServer() && !Sync.user() && !isLogin) { location.hash = '#/accedi'; return; }
+  if (isLogin && (!Sync.isServer() || Sync.user())) { location.hash = '#/'; return; }
   const route = routes.find(([re]) => re.test(path));
   if (!route) { location.hash = '#/'; return; }
   const [re, fn, tab] = route;
@@ -1141,6 +1447,26 @@ async function render() {
 }
 
 window.addEventListener('hashchange', render);
+
+/**
+ * Arrivano dati da altri dispositivi: ridisegna la schermata, ma non mentre
+ * l'utente sta scrivendo in un campo o ha una finestra aperta.
+ */
+function isBusyTyping() {
+  const a = document.activeElement;
+  return !!document.querySelector('#modal-root .modal') || !!(a && a.closest('#view') && a.matches('input, select, textarea'));
+}
+function renderWhenIdle() {
+  if (isBusyTyping()) { ui.pendingRender = true; return; }
+  ui.pendingRender = false;
+  render();
+}
+document.addEventListener('focusout', () => setTimeout(() => { if (ui.pendingRender) renderWhenIdle(); }, 200));
+setInterval(() => { if (ui.pendingRender) renderWhenIdle(); }, 2000);
+
+Sync.on('status', refreshSyncIndicators);
+Sync.on('data', renderWhenIdle);
+Sync.on('logout', () => { ui.pendingToast = ['Sessione scaduta: accedi di nuovo.', { kind: 'error' }]; go('#/accedi'); });
 
 // ---------------------------------------------------------------------------
 // Service worker (offline) e avvio
@@ -1176,7 +1502,14 @@ async function start() {
       <p>${esc(e.message)}</p><p>Se usi la navigazione privata, aprila in una finestra normale.</p></section>`;
     return;
   }
+  await Sync.detect();
+  if (Sync.isServer()) {
+    Sync.start();
+    if (Sync.user()) await S.useServerIdentity(Sync.user());
+  }
   await render();
+  // Con il server: scarica le novità (e, se il dispositivo era vuoto, tutti i dati)
+  if (Sync.isServer() && Sync.user()) Sync.onLogin(Sync.user(), { resetLocal: S.resetSyncedData, seedIfEmpty: S.seedIfEmpty });
   registerServiceWorker();
 }
 

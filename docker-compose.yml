@@ -1,0 +1,32 @@
+# Avvio:  docker compose up -d --build
+# Le impostazioni (dominio, email per il certificato) stanno nel file .env
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      COOKIE_SECURE: "1"
+      TRUST_PROXY: "1"
+    volumes:
+      - ./data:/data          # database e backup: restano sul VPS anche se il contenitore viene ricreato
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # certificati HTTPS
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -58,11 +58,48 @@ export async function init() {
   } else {
     settingsCache = s;
   }
-  // Aggiornamento dalla versione 1.0: aggiunge le tariffe di soggiorno se mancano.
+  await ensureStayProducts();
+  return settingsCache;
+}
+
+/**
+ * Le tariffe di soggiorno hanno id fissi: se mancano (archivi della versione
+ * 1.0, o struttura nuova sul server) si aggiungono solo in locale, senza
+ * inviarle, così non sovrascrivono mai quelle impostate dal manager.
+ */
+async function ensureStayProducts() {
   const missing = [];
   for (const p of M.defaultStayProducts()) if (!(await db.get('products', p.id))) missing.push(p);
-  await db.putMany({ products: missing });
-  return settingsCache;
+  await db.putMany({ products: missing }, { remote: true });
+}
+
+/** Svuota i dati condivisi locali (camere, listino, conti, dati struttura). */
+export async function resetSyncedData() {
+  await db.clear(db.SYNCED_STORES);
+  await ensureStayProducts();
+}
+
+/**
+ * Struttura nuova sul server, senza dati: il manager parte da camere e
+ * listino di esempio, che vengono inviati al server come sue modifiche.
+ */
+export async function seedIfEmpty(user) {
+  await ensureStayProducts();
+  if (user.role !== 'manager') return false;
+  const hasData = (await db.count('locations')) > 0 || (await listProducts({ includeInactive: true })).length > 0;
+  if (hasData) return false;
+  const now = Date.now();
+  const mine = (r) => M.stamp(r, device(), now);
+  await db.putMany({
+    locations: M.defaultLocations().map(mine),
+    products: [...M.defaultProducts(), ...M.defaultStayProducts()].map(mine),
+  });
+  return true;
+}
+
+/** Dopo l'accesso al server il "dispositivo" è la persona collegata. */
+export function useServerIdentity(user) {
+  return saveSettings({ deviceName: user.name, pinHash: '' });
 }
 
 export function getSettings() {

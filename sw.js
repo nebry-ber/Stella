@@ -8,7 +8,7 @@
  * scaricheranno i nuovi file e l'app mostrerà "È disponibile una nuova versione".
  */
 
-const VERSION = 'v1.2.1';
+const VERSION = 'v1.3.0';
 const CACHE = `bucaneve-${VERSION}`;
 
 // Percorsi relativi: funzionano anche in una sottocartella (es. utente.github.io/Stella/)
@@ -20,6 +20,7 @@ const FILES = [
   './js/store.js',
   './js/model.js',
   './js/db.js',
+  './js/sync.js',
   './manifest.webmanifest',
   './icons/icon.svg',
   './icons/icon-192.png',
@@ -46,7 +47,9 @@ self.addEventListener('message', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+  const url = new URL(req.url);
+  // Le API del server non passano mai dalla cache
+  if (req.method !== 'GET' || url.origin !== self.location.origin || url.pathname.includes('/api/')) return;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
     // Le navigazioni (apertura dell'app) ricevono sempre index.html dalla cache.
