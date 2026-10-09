@@ -12,7 +12,7 @@ import * as M from './model.js';
 import * as Sync from './sync.js';
 import * as Admin from './admin.js';
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 const UNLOCK_MS = 5 * 60 * 1000; // dopo il PIN, impostazioni sbloccate per 5 minuti
 
 const $view = document.getElementById('view');
@@ -956,8 +956,14 @@ async function summaryData(source, id) {
 // Accesso (solo con il server)
 // ---------------------------------------------------------------------------
 
-async function renderLogin(codeParam) {
-  setHeader('Accesso', 'Registro consumazioni');
+/** Indirizzo diretto per amministratore e manager: #/gestione (solo email + password). */
+function renderLoginResp() {
+  ui.login.tab = 'manager';
+  return renderLogin(null, { respOnly: true });
+}
+
+async function renderLogin(codeParam, { respOnly = false } = {}) {
+  setHeader(respOnly ? 'Accesso responsabili' : 'Accesso', respOnly ? 'Amministratore e manager' : 'Registro consumazioni');
   const L = ui.login;
   if (codeParam && codeParam !== L.code) Object.assign(L, { tab: 'staff', code: codeParam, staff: null, selected: null });
   // Arrivati dal link del manager: si mostrano subito i nomi della struttura
@@ -1004,7 +1010,7 @@ async function renderLogin(codeParam) {
       </form>
       <button type="button" class="btn btn-small btn-ghost" data-action="login-unpick">Non sono ${esc(who?.name || '')}</button>`;
   }
-  $view.innerHTML = `<section class="card login-card">${tabs}${body}</section>`;
+  $view.innerHTML = `<section class="card login-card">${respOnly ? '' : tabs}${body}</section>`;
   $view.querySelector('input')?.focus();
 }
 
@@ -1452,6 +1458,7 @@ const routes = [
   [/^\/dati$/, renderData, 'dati'],
   [/^\/impostazioni$/, renderSettings, 'impostazioni'],
   [/^\/accedi(?:\/([a-z0-9-]+))?$/, renderLogin, 'accedi'],
+  [/^\/gestione$/, renderLoginResp, 'accedi'],
   [/^\/password$/, renderForcePassword, 'password'],
   [/^\/admin$/, () => Admin.renderList(), 'admin'],
   [/^\/admin\/nuova$/, () => Admin.renderNew(), 'admin'],
@@ -1471,7 +1478,7 @@ let lastPath = null;
 async function render() {
   const path = currentPath();
   // Con il server: senza accesso si va alla schermata di login, e viceversa
-  const isLogin = path.startsWith('/accedi');
+  const isLogin = path.startsWith('/accedi') || path === '/gestione';
   if (Sync.isServer() && !Sync.user() && !isLogin) { location.hash = '#/accedi'; return; }
   if (isLogin && (!Sync.isServer() || Sync.user())) { location.hash = '#/'; return; }
   const u = Sync.user();

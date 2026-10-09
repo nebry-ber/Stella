@@ -34,7 +34,7 @@ Serve solo il repository su GitHub: non c'è niente da compilare né da installa
 
 GitHub Pages usa HTTPS, che è necessario per l'installazione e per il funzionamento offline.
 
-**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.4.0'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
+**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.4.1'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
 
 **Provare in locale** (facoltativo, per chi sviluppa): da questa cartella, con un qualsiasi server statico, ad esempio
 `python3 -m http.server 8000` e poi apri `http://localhost:8000`.
@@ -156,7 +156,7 @@ Il manager crea i dipendenti in **Impostazioni → Dipendenti** (nome, PIN, perm
    curl -fsSL https://raw.githubusercontent.com/nebry-ber/Stella/refs/heads/claude/festive-archimedes-xgdk4y/deploy/install.sh | sudo bash
    ```
    Alla fine compaiono **email e password del manager**: annotale e cambia la password al primo accesso.
-5. Apri **https://stella-app.cumulonembo.com**, scheda *Manager*, e accedi.
+5. Apri **https://stella-app.cumulonembo.com/#/gestione** (accesso per amministratore e manager) e accedi.
 
 > Nei sottodomini usa lettere, numeri e trattini: il trattino basso `_` non è ammesso nei certificati HTTPS.
 

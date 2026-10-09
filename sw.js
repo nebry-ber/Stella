@@ -8,7 +8,7 @@
  * scaricheranno i nuovi file e l'app mostrerà "È disponibile una nuova versione".
  */
 
-const VERSION = 'v1.4.0';
+const VERSION = 'v1.4.1';
 const CACHE = `bucaneve-${VERSION}`;
 
 // Percorsi relativi: funzionano anche in una sottocartella (es. utente.github.io/Stella/)
