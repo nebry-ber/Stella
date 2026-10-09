@@ -20,6 +20,7 @@
  *   GET  /api/staff                 dipendenti della struttura (manager)
  *   POST /api/staff                 nuovo dipendente (manager)
  *   PATCH /api/staff/:id            modifica nome, PIN, permessi, attivo (manager)
+ *   /api/admin/…                    pannello dell'amministratore (vedi server/admin.js)
  */
 
 import http from 'node:http';
@@ -29,6 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { openDb } from './db.js';
 import * as A from './auth.js';
 import { applyChanges, pullChanges, MAX_RECORDS_PER_PUSH } from './sync.js';
+import { adminRoutes } from './admin.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version || '1';
@@ -131,6 +133,8 @@ function serveStatic(req, res) {
 
 function requireUser(ctx, ...roles) {
   if (!ctx.user) throw new HttpError(401, 'Accesso richiesto.');
+  // Password provvisoria: prima di tutto va cambiata
+  if (ctx.user.mustChange && !ctx.allowMustChange) throw new HttpError(403, 'Cambia prima la password provvisoria.');
   if (roles.length && !roles.includes(ctx.user.role)) throw new HttpError(403, 'Operazione non consentita.');
   if (!ctx.user.hotel && ctx.user.role !== 'admin') throw new HttpError(403, 'Utente senza struttura.');
   return ctx.user;
@@ -165,6 +169,9 @@ const routes = [
       throw new HttpError(401, 'Email o password non corretti.');
     }
     A.clearFailures(db, `pwd:${email}`);
+    if (row.hotel_id && !db.prepare('SELECT active FROM hotels WHERE id = ?').get(row.hotel_id)?.active) {
+      throw new HttpError(403, 'La struttura è disattivata. Contatta l\'amministratore del servizio.');
+    }
     const token = A.createSession(db, row.id, req.headers['user-agent']);
     res.setHeader('Set-Cookie', sessionCookie(token, opts));
     return { user: A.sessionUser(db, token) };
@@ -200,7 +207,7 @@ const routes = [
     return { ok: true };
   }],
 
-  ['GET', /^\/api\/me$/, (ctx) => ({ user: requireUser(ctx) })],
+  ['GET', /^\/api\/me$/, (ctx) => { ctx.allowMustChange = true; return { user: requireUser(ctx) }; }],
 
   ['POST', /^\/api\/sync$/, (ctx) => {
     const user = requireUser(ctx, 'manager', 'staff');
@@ -214,13 +221,15 @@ const routes = [
   }],
 
   ['POST', /^\/api\/password$/, (ctx) => {
+    ctx.allowMustChange = true;
     const user = requireUser(ctx, 'manager', 'admin');
     const row = ctx.db.prepare('SELECT pass_hash FROM users WHERE id = ?').get(user.id);
     if (!A.verifySecret(String(ctx.body.current || ''), row.pass_hash)) throw new HttpError(400, 'La password attuale non è corretta.');
     const next = String(ctx.body.next || '');
     if (next.length < 10) throw new HttpError(400, 'La nuova password deve avere almeno 10 caratteri.');
-    ctx.db.prepare('UPDATE users SET pass_hash = ?, updated_at = ? WHERE id = ?').run(A.hashSecret(next), Date.now(), user.id);
-    return { ok: true };
+    if (A.verifySecret(next, row.pass_hash)) throw new HttpError(400, 'La nuova password deve essere diversa da quella attuale.');
+    ctx.db.prepare('UPDATE users SET pass_hash = ?, must_change = 0, updated_at = ? WHERE id = ?').run(A.hashSecret(next), Date.now(), user.id);
+    return { ok: true, user: { ...user, mustChange: false } };
   }],
 
   ['GET', /^\/api\/staff$/, (ctx) => {
@@ -270,6 +279,8 @@ const routes = [
     return { staff: staffRow(ctx.db.prepare('SELECT * FROM users WHERE id = ?').get(row.id)) };
   }],
 ];
+
+routes.push(...adminRoutes({ HttpError, requireUser, str }));
 
 // ---------------------------------------------------------------------------
 // Server

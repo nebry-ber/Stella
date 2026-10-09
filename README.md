@@ -34,7 +34,7 @@ Serve solo il repository su GitHub: non c'è niente da compilare né da installa
 
 GitHub Pages usa HTTPS, che è necessario per l'installazione e per il funzionamento offline.
 
-**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.3.0'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
+**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.4.0'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
 
 **Provare in locale** (facoltativo, per chi sviluppa): da questa cartella, con un qualsiasi server statico, ad esempio
 `python3 -m http.server 8000` e poi apri `http://localhost:8000`.
@@ -139,6 +139,12 @@ Con il server Stella su un VPS l'app non ha più bisogno di Drive: ogni modifica
 
 Il manager crea i dipendenti in **Impostazioni → Dipendenti** (nome, PIN, permessi) e manda loro il **link di accesso** (pulsante *Copia link* o *Condividi*). Cambiare il PIN o disattivare un dipendente lo fa uscire da tutti i dispositivi. **Esci** toglie i dati dal telefono (restano sul server).
 
+### Tre livelli: amministratore, manager, dipendenti
+
+- **Amministratore** (chi gestisce il servizio): entra dalla scheda *Responsabile* e vede il **Pannello di gestione**: elenco strutture con lo stato dell'abbonamento (attivo, in scadenza entro 30 giorni, scaduto, disattivato), creazione di una struttura con il suo manager, logo (compare sulle ricevute), contatti, piano, importo, inizio e scadenza (*Rinnova: +1 anno*), nuove password provvisorie, attivazione/disattivazione.
+- **Manager** della struttura: riceve dall'amministratore email e **password provvisoria** (messaggio pronto da copiare); al primo accesso l'app gli chiede di sceglierne una personale. Poi gestisce listino, camere, dati della ricevuta, dipendenti e permessi.
+- **Dipendenti**: link della struttura, nome e PIN.
+
 ### Installazione sul VPS (una volta sola)
 
 1. **DNS su Cloudflare** → *DNS* → *Add record*: tipo **A**, nome **stella-app**, indirizzo IPv4 del VPS, stato proxy **Solo DNS** (nuvola grigia). Salva.
@@ -156,10 +162,11 @@ Il manager crea i dipendenti in **Impostazioni → Dipendenti** (nome, PIN, perm
 
 Lo script installa Docker, apre il firewall interno del VPS, avvia l'app con **Caddy** (certificato HTTPS automatico e gratuito) e programma un **backup del database ogni notte** in `/opt/stella/data/backups` (tiene gli ultimi 30).
 
-**Aggiornare** all'ultima versione: `sudo /opt/stella/deploy/update.sh` (fa prima un backup).
+**Aggiornare** all'ultima versione: `sudo /opt/stella/deploy/update.sh` (fa prima un backup). Se manca l'account dell'amministratore, lo script lo crea e mostra la password provvisoria.
 
 **Comandi utili** (dal VPS, nella cartella `/opt/stella`):
 - `sudo docker compose exec app node server/cli.js list`: strutture e utenti
+- `sudo docker compose exec app node server/cli.js create-admin`: un altro account amministratore
 - `sudo docker compose exec app node server/cli.js reset-password email@esempio.it`: nuova password a un manager
 - `sudo docker compose exec app node server/cli.js add-hotel`: aggiunge un'altra struttura
 - `sudo docker compose logs -f app`: messaggi del server

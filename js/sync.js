@@ -111,6 +111,12 @@ export async function detect() {
 // Accesso / uscita
 // ---------------------------------------------------------------------------
 
+/** Aggiorna l'utente collegato (es. dopo il cambio della password provvisoria). */
+export async function setUser(user) {
+  setStatus({ mode: 'server', user });
+  await saveMeta({ user });
+}
+
 /**
  * Da chiamare dopo un accesso riuscito. Se il dispositivo conteneva dati di
  * un'altra struttura (o di prova) li cancella, poi scarica tutto dal server.
@@ -148,7 +154,8 @@ let again = false;
 
 /** Invia le modifiche locali e scarica quelle degli altri dispositivi. */
 export async function syncNow() {
-  if (!isServer() || !state.user) return;
+  // L'amministratore non ha una struttura; con la password provvisoria si aspetta il cambio
+  if (!isServer() || !state.user?.hotel || state.user.mustChange) return;
   if (running) { again = true; return; }
   running = true;
   setStatus({ status: 'syncing' });

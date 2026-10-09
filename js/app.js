@@ -10,8 +10,9 @@
 import * as S from './store.js';
 import * as M from './model.js';
 import * as Sync from './sync.js';
+import * as Admin from './admin.js';
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 const UNLOCK_MS = 5 * 60 * 1000; // dopo il PIN, impostazioni sbloccate per 5 minuti
 
 const $view = document.getElementById('view');
@@ -115,7 +116,7 @@ function toast(text, { actionLabel, onAction, ms = 3500, kind = '' } = {}) {
  * { value, data } (data = campi del modulo) oppure null se annullata.
  * validate(value, data) può restituire un messaggio d'errore per tenerla aperta.
  */
-function openModal({ title, html = '', buttons, validate }) {
+function openModal({ title, html = '', buttons, validate, onOpen }) {
   return new Promise((resolve) => {
     const root = document.getElementById('modal-root');
     root.innerHTML = `
@@ -155,7 +156,8 @@ function openModal({ title, html = '', buttons, validate }) {
       if (msg) { err.textContent = msg; err.hidden = false; form.classList.remove('shake'); void form.offsetWidth; form.classList.add('shake'); return; }
       close({ value, data });
     });
-    const first = form.querySelector('input, select');
+    onOpen?.(form);
+    const first = form.querySelector('input:not([readonly]), select');
     (first || form.querySelector('.btn-primary') || form.querySelector('button'))?.focus();
   });
 }
@@ -417,6 +419,9 @@ function receiptHtml(hotel, { name, guestName, lines, closedAt, ref }) {
           </tbody>
         </table>
         <div class="receipt-total"><span>Totale da pagare</span><strong data-testid="grand-total">${euro(totals.total)}</strong></div>
+      </div>
+      <div class="rc-sign">
+        <div class="sign-box"><span>Firma per accettazione</span></div>
       </div>
       <footer class="rc-foot">
         ${hotel.footer ? `<p class="rc-thanks">${esc(hotel.footer)}</p>` : ''}
@@ -965,7 +970,7 @@ async function renderLogin(codeParam) {
   const tabs = `
     <div class="seg" role="tablist">
       <button type="button" role="tab" class="${L.tab === 'staff' ? 'active' : ''}" aria-selected="${L.tab === 'staff'}" data-action="login-tab" data-tab="staff">Dipendente</button>
-      <button type="button" role="tab" class="${L.tab === 'manager' ? 'active' : ''}" aria-selected="${L.tab === 'manager'}" data-action="login-tab" data-tab="manager">Manager</button>
+      <button type="button" role="tab" class="${L.tab === 'manager' ? 'active' : ''}" aria-selected="${L.tab === 'manager'}" data-action="login-tab" data-tab="manager">Responsabile</button>
     </div>`;
   let body;
   if (L.tab === 'manager') {
@@ -1005,6 +1010,10 @@ async function renderLogin(codeParam) {
 
 /** Dopo l'accesso: prepara il dispositivo e scarica i dati della struttura. */
 async function afterLogin(user) {
+  await Sync.setUser(user);
+  if (user.mustChange) { go('#/password'); return; }
+  ui.tempPassword = null;
+  if (user.role === 'admin') { ui.pendingToast = [`Ciao ${user.name}!`]; go('#/admin'); return; }
   $view.innerHTML = '<p class="loading">Scarico i dati della struttura…</p>';
   await S.useServerIdentity(user);
   await Sync.onLogin(user, { resetLocal: S.resetSyncedData, seedIfEmpty: S.seedIfEmpty });
@@ -1028,7 +1037,16 @@ const submits = {
   },
   'login-manager': async (form) => {
     const { user } = await Sync.api('POST', 'login', { email: form.email.value.trim(), password: form.password.value });
+    ui.tempPassword = form.password.value; // solo in memoria, per il cambio della password provvisoria
     await afterLogin(user);
+  },
+  'force-password': async (form) => {
+    const d = Object.fromEntries(new FormData(form));
+    if (d.next.length < 10) throw new Error('La nuova password deve avere almeno 10 caratteri.');
+    if (d.next !== d.next2) throw new Error('Le due password non coincidono.');
+    const res = await Sync.api('POST', 'password', { current: ui.tempPassword || d.current, next: d.next });
+    toast('Password salvata');
+    await afterLogin(res.user);
   },
 };
 
@@ -1044,6 +1062,23 @@ document.addEventListener('submit', async (e) => {
     if (form.pin) form.pin.value = '';
   } finally { if (btn && btn.isConnected) btn.disabled = false; }
 });
+
+/** Primo accesso con password provvisoria: bisogna sceglierne una personale. */
+function renderForcePassword() {
+  const u = Sync.user();
+  setHeader('Scegli la tua password', u?.name || '');
+  $view.innerHTML = `
+    <form class="card login-card" data-submit="force-password" novalidate>
+      <h2 class="section-title">Benvenuto${u ? `, ${esc(u.name)}` : ''}!</h2>
+      <p>Stai usando una password provvisoria. Scegline una personale (almeno 10 caratteri): solo tu la conoscerai.</p>
+      ${ui.tempPassword ? '' : '<label class="field"><span>Password provvisoria</span><input name="current" type="password" autocomplete="current-password"></label>'}
+      <label class="field"><span>Nuova password</span><input name="next" type="password" autocomplete="new-password" minlength="10"></label>
+      <label class="field"><span>Ripeti la nuova password</span><input name="next2" type="password" autocomplete="new-password"></label>
+      <button type="submit" class="btn btn-primary btn-block">Salva e continua</button>
+      <button type="button" class="btn btn-ghost btn-block" data-action="logout-now">Esci</button>
+    </form>`;
+  $view.querySelector('input')?.focus();
+}
 
 function renderNotFound() {
   setHeader('Non trovato', '', '#/');
@@ -1276,6 +1311,12 @@ const actions = {
     go('#/');
   },
 
+  'logout-now': async () => {
+    await Sync.logout({ resetLocal: S.resetSyncedData });
+    ui.tempPassword = null;
+    go('#/accedi');
+  },
+
   'login-tab': (el) => { ui.login.tab = el.dataset.tab; render(); },
   'login-pick': (el) => { ui.login.selected = el.dataset.id; render(); },
   'login-unpick': () => { ui.login.selected = null; render(); },
@@ -1389,6 +1430,10 @@ document.addEventListener('change', async (e) => {
   try { await fn(e.target); } catch (err) { handleError(err); }
 });
 
+Object.assign(actions, Admin.actions);
+Object.assign(changes, Admin.changes);
+Object.assign(submits, Admin.submits);
+
 // Invio nel campo ospite = conferma e chiudi tastiera
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.matches('input[data-change="guest"]')) e.target.blur();
@@ -1407,6 +1452,10 @@ const routes = [
   [/^\/dati$/, renderData, 'dati'],
   [/^\/impostazioni$/, renderSettings, 'impostazioni'],
   [/^\/accedi(?:\/([a-z0-9-]+))?$/, renderLogin, 'accedi'],
+  [/^\/password$/, renderForcePassword, 'password'],
+  [/^\/admin$/, () => Admin.renderList(), 'admin'],
+  [/^\/admin\/nuova$/, () => Admin.renderNew(), 'admin'],
+  [/^\/admin\/h\/([0-9a-f-]{36})$/, (id) => Admin.renderHotel(id), 'admin'],
 ];
 
 function currentPath() {
@@ -1425,6 +1474,12 @@ async function render() {
   const isLogin = path.startsWith('/accedi');
   if (Sync.isServer() && !Sync.user() && !isLogin) { location.hash = '#/accedi'; return; }
   if (isLogin && (!Sync.isServer() || Sync.user())) { location.hash = '#/'; return; }
+  const u = Sync.user();
+  if (u?.mustChange && path !== '/password') { location.hash = '#/password'; return; }
+  if (!u?.mustChange && path === '/password') { location.hash = '#/'; return; }
+  const isAdminPath = path.startsWith('/admin');
+  if (u?.role === 'admin' && !u.mustChange && !isAdminPath) { location.hash = '#/admin'; return; }
+  if (isAdminPath && u?.role !== 'admin') { location.hash = '#/'; return; }
   const route = routes.find(([re]) => re.test(path));
   if (!route) { location.hash = '#/'; return; }
   const [re, fn, tab] = route;
@@ -1505,12 +1560,18 @@ async function start() {
   await Sync.detect();
   if (Sync.isServer()) {
     Sync.start();
-    if (Sync.user()) await S.useServerIdentity(Sync.user());
+    if (Sync.user()?.hotel) await S.useServerIdentity(Sync.user());
   }
   await render();
   // Con il server: scarica le novità (e, se il dispositivo era vuoto, tutti i dati)
-  if (Sync.isServer() && Sync.user()) Sync.onLogin(Sync.user(), { resetLocal: S.resetSyncedData, seedIfEmpty: S.seedIfEmpty });
+  const u = Sync.user();
+  if (Sync.isServer() && u?.hotel && !u.mustChange) Sync.onLogin(u, { resetLocal: S.resetSyncedData, seedIfEmpty: S.seedIfEmpty });
   registerServiceWorker();
 }
+
+Admin.init({
+  view: $view, esc, toast, openModal, setHeader, go, render, imageToDataUrl, accountCardHtml,
+  api: Sync.api, user: Sync.user,
+});
 
 start();

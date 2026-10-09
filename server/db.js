@@ -78,11 +78,35 @@ CREATE TABLE IF NOT EXISTS attempts (
 );
 `;
 
+/**
+ * Colonne aggiunte nelle versioni successive: vengono create se mancano,
+ * così un database già in uso si aggiorna da solo senza perdere dati.
+ */
+const MIGRATIONS = {
+  hotels: {
+    contact_name: "TEXT NOT NULL DEFAULT ''",
+    contact_email: "TEXT NOT NULL DEFAULT ''",
+    contact_phone: "TEXT NOT NULL DEFAULT ''",
+    plan: "TEXT NOT NULL DEFAULT ''",
+    price_cents: 'INTEGER NOT NULL DEFAULT 0',
+    sub_start: "TEXT NOT NULL DEFAULT ''", // AAAA-MM-GG
+    sub_end: "TEXT NOT NULL DEFAULT ''",   // AAAA-MM-GG
+    notes: "TEXT NOT NULL DEFAULT ''",
+  },
+  users: {
+    must_change: 'INTEGER NOT NULL DEFAULT 0', // password provvisoria da cambiare al primo accesso
+  },
+};
+
 /** Apre (o crea) il database nella cartella indicata. */
 export function openDb(dataDir) {
   fs.mkdirSync(dataDir, { recursive: true });
   const db = new DatabaseSync(path.join(dataDir, 'stella.db'));
   db.exec(SCHEMA);
+  for (const [table, cols] of Object.entries(MIGRATIONS)) {
+    const have = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+    for (const [col, def] of Object.entries(cols)) if (!have.has(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+  }
   return db;
 }
 

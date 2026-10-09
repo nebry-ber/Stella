@@ -96,6 +96,7 @@ export function publicUser(row) {
     : Object.fromEntries(Object.keys(PERMISSIONS).map((k) => [k, true]));
   return {
     id: row.id, name: row.name, role: row.role, email: row.email || null, perms,
+    mustChange: !!row.must_change,
     hotel: row.hotel_id ? { id: row.hotel_id, code: row.hotel_code, name: row.hotel_name } : null,
   };
 }

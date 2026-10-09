@@ -146,3 +146,58 @@ test('sicurezza: origine estranea, non-JSON, file interni', async () => {
   assert.equal(home.status, 200);
   assert.match(home.headers.get('content-security-policy'), /default-src 'self'/);
 });
+
+test('amministratore: crea struttura, credenziali provvisorie, cambio obbligatorio, logo, disattivazione', async () => {
+  const now = Date.now();
+  server.db.prepare("INSERT INTO users (id, hotel_id, role, name, email, pass_hash, perms, active, created_at, updated_at) VALUES (?, NULL, 'admin', 'Admin', 'admin@test.it', ?, '{}', 1, ?, ?)")
+    .run(A.newId(), A.hashSecret('admin-password'), now, now);
+  const admin = client();
+  assert.equal((await admin('POST', '/api/login', { email: 'admin@test.it', password: 'admin-password' })).body.user.role, 'admin');
+  // Un manager non può usare il pannello
+  assert.equal((await manager('GET', '/api/admin/hotels')).status, 403);
+
+  const created = await admin('POST', '/api/admin/hotels', {
+    name: 'Hotel Larice', code: 'larice', managerName: 'Paolo', managerEmail: 'paolo@larice.test', subEnd: '2027-10-31', priceCents: 29900, plan: 'Annuale',
+  });
+  assert.equal(created.status, 200);
+  const { password } = created.body.credentials;
+  assert.equal(created.body.hotel.status, 'attivo');
+  assert.equal((await admin('POST', '/api/admin/hotels', { name: 'X', code: 'larice', managerName: 'Y', managerEmail: 'y@y.it' })).status, 409);
+
+  // Il manager entra con la password provvisoria: può solo cambiarla
+  const paolo = client();
+  const login = await paolo('POST', '/api/login', { email: 'paolo@larice.test', password });
+  assert.equal(login.body.user.mustChange, true);
+  assert.equal((await paolo('POST', '/api/sync', { cursor: 0, changes: {} })).status, 403);
+  assert.equal((await paolo('POST', '/api/password', { current: password, next: password })).status, 400);
+  assert.equal((await paolo('POST', '/api/password', { current: password, next: 'nuova-password-paolo' })).status, 200);
+  const sync = await paolo('POST', '/api/sync', { cursor: 0, changes: {} });
+  assert.equal(sync.status, 200);
+  // L'intestazione della ricevuta ha già il nome della nuova struttura
+  assert.equal(sync.body.changes.config[0].name, 'Hotel Larice');
+
+  // Logo caricato dall'amministratore → arriva ai dispositivi della struttura
+  const hid = created.body.hotel.id;
+  const logo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+  assert.equal((await admin('POST', `/api/admin/hotels/${hid}/logo`, { logo: 'javascript:alert(1)' })).status, 400);
+  assert.equal((await admin('POST', `/api/admin/hotels/${hid}/logo`, { logo })).status, 200);
+  const after = await paolo('POST', '/api/sync', { cursor: sync.body.cursor, changes: {} });
+  assert.equal(after.body.changes.config[0].logo, logo);
+
+  // Nuova password provvisoria: la vecchia smette di funzionare
+  const mid = created.body.hotel.managers[0].id;
+  const reset = await admin('POST', `/api/admin/users/${mid}/reset`, {});
+  assert.equal((await paolo('GET', '/api/me')).status, 401);
+  assert.equal((await client()('POST', '/api/login', { email: 'paolo@larice.test', password: reset.body.credentials.password })).body.user.mustChange, true);
+
+  // Abbonamento scaduto e struttura disattivata
+  const exp = await admin('PATCH', `/api/admin/hotels/${hid}`, { subEnd: '2020-01-01' });
+  assert.equal(exp.body.hotel.status, 'scaduto');
+  const p2 = client();
+  await p2('POST', '/api/login', { email: 'paolo@larice.test', password: reset.body.credentials.password });
+  await admin('PATCH', `/api/admin/hotels/${hid}`, { active: false });
+  assert.equal((await p2('GET', '/api/me')).status, 401);
+  assert.equal((await p2('POST', '/api/login', { email: 'paolo@larice.test', password: reset.body.credentials.password })).status, 403);
+  const list = await admin('GET', '/api/admin/hotels');
+  assert.deepEqual(list.body.hotels.map((h) => [h.code, h.status]).sort(), [['bucaneve', 'senza-scadenza'], ['larice', 'disattivata']]);
+});

@@ -8,7 +8,7 @@
  * scaricheranno i nuovi file e l'app mostrerà "È disponibile una nuova versione".
  */
 
-const VERSION = 'v1.3.0';
+const VERSION = 'v1.4.0';
 const CACHE = `bucaneve-${VERSION}`;
 
 // Percorsi relativi: funzionano anche in una sottocartella (es. utente.github.io/Stella/)
@@ -21,6 +21,7 @@ const FILES = [
   './js/model.js',
   './js/db.js',
   './js/sync.js',
+  './js/admin.js',
   './manifest.webmanifest',
   './icons/icon.svg',
   './icons/icon-192.png',

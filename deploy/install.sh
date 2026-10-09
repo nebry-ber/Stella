@@ -122,6 +122,12 @@ done
 say "Configurazione della struttura"
 docker compose exec app node --disable-warning=ExperimentalWarning server/cli.js init </dev/tty
 
+# --- 6b. Account dell'amministratore (pannello di gestione) ----------------------
+if ! docker compose exec -T app node --disable-warning=ExperimentalWarning server/cli.js has-admin; then
+  say "Il tuo account di amministratore"
+  docker compose exec app node --disable-warning=ExperimentalWarning server/cli.js create-admin </dev/tty
+fi
+
 # --- 7. Backup notturno -----------------------------------------------------------
 cat > /etc/cron.d/stella-backup <<CRON
 # Backup del database Stella ogni notte (tiene gli ultimi 30, in $DIR/data/backups)
