@@ -34,7 +34,7 @@ Serve solo il repository su GitHub: non c'è niente da compilare né da installa
 
 GitHub Pages usa HTTPS, che è necessario per l'installazione e per il funzionamento offline.
 
-**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.2.0'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
+**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.2.1'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
 
 **Provare in locale** (facoltativo, per chi sviluppa): da questa cartella, con un qualsiasi server statico, ad esempio
 `python3 -m http.server 8000` e poi apri `http://localhost:8000`.

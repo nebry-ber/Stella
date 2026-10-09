@@ -10,7 +10,7 @@
 import * as S from './store.js';
 import * as M from './model.js';
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 const UNLOCK_MS = 5 * 60 * 1000; // dopo il PIN, impostazioni sbloccate per 5 minuti
 
 const $view = document.getElementById('view');

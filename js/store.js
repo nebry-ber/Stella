@@ -124,13 +124,13 @@ export function getLocation(id) {
   return db.get('locations', id);
 }
 
-export async function updateLocation(id, patch) {
+export const updateLocation = serial(async (id, patch) => {
   const cur = await db.get('locations', id);
   if (!cur) throw new Error('Postazione non trovata');
   const rec = M.stamp({ ...cur, ...patch }, device());
   await db.put('locations', rec);
   return rec;
-}
+});
 
 export async function addLocation(kind, label) {
   const all = await db.getAll('locations');
@@ -162,7 +162,7 @@ export async function getHotel() {
 
 const HOTEL_FIELDS = ['name', 'place', 'company', 'address', 'vatNumber', 'phone', 'email', 'logo', 'footer'];
 
-export async function saveHotel(patch) {
+export const saveHotel = serial(async (patch) => {
   const cur = await getHotel();
   const clean = {};
   for (const k of HOTEL_FIELDS) if (k in patch) clean[k] = String(patch[k] ?? '').trim();
@@ -170,7 +170,7 @@ export async function saveHotel(patch) {
   const rec = M.stamp({ ...cur, ...clean }, device());
   await db.put('config', rec);
   return rec;
-}
+});
 
 // ---------------------------------------------------------------------------
 // Listino
@@ -192,7 +192,7 @@ export async function listStayRates() {
 }
 
 /** Modifica prezzo e IVA di una voce di soggiorno (nome e tipo restano fissi). */
-export async function saveStayRate(type, { price, vat }) {
+export const saveStayRate = serial(async (type, { price, vat }) => {
   const cur = await db.get('products', M.STAY_TYPES[type].id);
   if (!cur) throw new Error('Voce di soggiorno non trovata');
   if (!Number.isInteger(price) || price < 0) throw new Error('Prezzo non valido.');
@@ -200,10 +200,10 @@ export async function saveStayRate(type, { price, vat }) {
   const rec = M.stamp({ ...cur, price, vat }, device());
   await db.put('products', rec);
   return rec;
-}
+});
 
 /** Crea o modifica un prodotto. I prodotti eliminati restano come "non attivi". */
-export async function saveProduct(data) {
+export const saveProduct = serial(async (data) => {
   const name = String(data.name || '').trim();
   if (!name) throw new Error('Inserisci il nome del prodotto.');
   if (!Number.isInteger(data.price) || data.price < 0) throw new Error('Prezzo non valido.');
@@ -218,13 +218,13 @@ export async function saveProduct(data) {
   const rec = M.stamp({ ...cur, name, price: data.price, vat: data.vat, category: data.category, active: data.active ?? cur.active }, device());
   await db.put('products', rec);
   return rec;
-}
+});
 
-export async function setProductActive(id, active) {
+export const setProductActive = serial(async (id, active) => {
   const cur = await db.get('products', id);
   if (!cur) return;
   await db.put('products', M.stamp({ ...cur, active }, device()));
-}
+});
 
 // ---------------------------------------------------------------------------
 // Consumazioni e conti aperti
