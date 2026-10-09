@@ -22,8 +22,11 @@ services:
     environment:
       DOMAIN: ${DOMAIN}
       ACME_EMAIL: ${ACME_EMAIL}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # per raggiungere altre app in ascolto sul VPS
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./sites:/etc/caddy/sites:ro   # altre app sullo stesso VPS (file .caddy)
       - caddy_data:/data      # certificati HTTPS
       - caddy_config:/config
 

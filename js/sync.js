@@ -4,7 +4,7 @@
  * L'app funziona in due modalità:
  *  - "standalone": nessun server (es. GitHub Pages). I dati si scambiano a
  *    mano con i file di esportazione, come nella prima versione.
- *  - "server": l'app è servita dal server Stella (es. app.cumulonembo.com).
+ *  - "server": l'app è servita dal server Stella (es. stella-app.cumulonembo.com).
  *    Serve l'accesso; ogni modifica locale finisce nell'outbox e viene inviata
  *    in pochi istanti, e ogni 10 secondi si scaricano le novità degli altri.
  *    Senza rete si continua a lavorare: le modifiche partono appena torna.

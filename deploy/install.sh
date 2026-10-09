@@ -79,7 +79,8 @@ cd "$DIR"
 # --- 4. Impostazioni -------------------------------------------------------------
 if [ ! -f .env ]; then
   say "Impostazioni"
-  DOMAIN=$(ask "Dominio dell'app" "app.cumulonembo.com")
+  DOMAIN=$(ask "Dominio dell'app (lettere, numeri e trattini: niente _ )" "stella-app.cumulonembo.com")
+  case "$DOMAIN" in *_*) echo "Il dominio non può contenere \"_\" (non è ammesso nei certificati HTTPS)."; exit 1 ;; esac
   ACME_EMAIL=$(ask "Email per il certificato HTTPS (avvisi di scadenza)")
   printf 'DOMAIN=%s\nACME_EMAIL=%s\n' "$DOMAIN" "$ACME_EMAIL" > .env
   chmod 600 .env
@@ -94,7 +95,21 @@ if [ -n "$MYIP" ] && [ "$MYIP" != "$DNSIP" ]; then
 fi
 
 # --- 5. Avvio --------------------------------------------------------------------
-mkdir -p data
+mkdir -p data sites
+[ -f sites/LEGGIMI.txt ] || cat > sites/LEGGIMI.txt <<'TXT'
+Altre app sullo stesso VPS
+--------------------------
+Caddy (il "portiere" HTTPS di questo VPS) serve anche le altre tue app.
+Per ognuna crea qui un file NOME.caddy, ad esempio meteo.caddy:
+
+    meteo.cumulonembo.com {
+        reverse_proxy host.docker.internal:8081
+    }
+
+dove 8081 è la porta su cui gira l'altra app sul VPS. Poi:
+    cd /opt/stella && sudo docker compose restart caddy
+Ricorda il record DNS su Cloudflare (A, nuvola grigia) per il nuovo sottodominio.
+TXT
 chown -R 1000:1000 data
 say "Avvio app e Caddy (la prima volta richiede qualche minuto)"
 docker compose up -d --build

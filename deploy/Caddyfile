@@ -11,3 +11,6 @@
 	}
 	reverse_proxy app:3000
 }
+
+# Altre app sullo stesso VPS: un file .caddy ciascuna nella cartella sites/ (vedi sites/LEGGIMI.txt)
+import /etc/caddy/sites/*.caddy

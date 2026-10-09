@@ -141,7 +141,7 @@ Il manager crea i dipendenti in **Impostazioni → Dipendenti** (nome, PIN, perm
 
 ### Installazione sul VPS (una volta sola)
 
-1. **DNS su Cloudflare** → *DNS* → *Add record*: tipo **A**, nome **app**, indirizzo IPv4 del VPS, stato proxy **Solo DNS** (nuvola grigia). Salva.
+1. **DNS su Cloudflare** → *DNS* → *Add record*: tipo **A**, nome **stella-app**, indirizzo IPv4 del VPS, stato proxy **Solo DNS** (nuvola grigia). Salva.
 2. **Console Oracle Cloud** → *Networking* → *Virtual cloud networks* → la tua VCN → *Security Lists* → *Default Security List* → *Add Ingress Rules*: sorgente `0.0.0.0/0`, protocollo TCP, porte di destinazione **80** e poi **443**.
 3. **Collegati al VPS** dal tuo computer con la chiave scaricata quando hai creato l'istanza:
    `ssh -i percorso/della/chiave ubuntu@IP-DEL-VPS` (su Oracle Linux l'utente è `opc` invece di `ubuntu`).
@@ -150,7 +150,9 @@ Il manager crea i dipendenti in **Impostazioni → Dipendenti** (nome, PIN, perm
    curl -fsSL https://raw.githubusercontent.com/nebry-ber/Stella/refs/heads/claude/festive-archimedes-xgdk4y/deploy/install.sh | sudo bash
    ```
    Alla fine compaiono **email e password del manager**: annotale e cambia la password al primo accesso.
-5. Apri **https://app.cumulonembo.com**, scheda *Manager*, e accedi.
+5. Apri **https://stella-app.cumulonembo.com**, scheda *Manager*, e accedi.
+
+> Nei sottodomini usa lettere, numeri e trattini: il trattino basso `_` non è ammesso nei certificati HTTPS.
 
 Lo script installa Docker, apre il firewall interno del VPS, avvia l'app con **Caddy** (certificato HTTPS automatico e gratuito) e programma un **backup del database ogni notte** in `/opt/stella/data/backups` (tiene gli ultimi 30).
 
@@ -161,6 +163,8 @@ Lo script installa Docker, apre il firewall interno del VPS, avvia l'app con **C
 - `sudo docker compose exec app node server/cli.js reset-password email@esempio.it`: nuova password a un manager
 - `sudo docker compose exec app node server/cli.js add-hotel`: aggiunge un'altra struttura
 - `sudo docker compose logs -f app`: messaggi del server
+
+**Altre app sullo stesso VPS:** Caddy fa da portiere HTTPS per tutte. Per ogni app aggiungi un file `/opt/stella/sites/NOME.caddy` (istruzioni in `sites/LEGGIMI.txt`), crea il record DNS del nuovo sottodominio e riavvia Caddy con `sudo docker compose restart caddy`. Il certificato del nuovo sottodominio arriva da solo.
 
 Nel repository non ci sono password né dati: stanno solo nel file `.env` e nella cartella `data/` del VPS.
 

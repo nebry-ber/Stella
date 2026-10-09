@@ -1,3 +1,4 @@
 # Dati e segreti del server: mai nel repository
 data/
+sites/
 .env
