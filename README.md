@@ -34,7 +34,7 @@ Serve solo il repository su GitHub: non c'è niente da compilare né da installa
 
 GitHub Pages usa HTTPS, che è necessario per l'installazione e per il funzionamento offline.
 
-**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.4.3'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
+**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.4.4'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
 
 **Provare in locale** (facoltativo, per chi sviluppa): da questa cartella, con un qualsiasi server statico, ad esempio
 `python3 -m http.server 8000` e poi apri `http://localhost:8000`.
@@ -135,7 +135,7 @@ Con il server Stella su un VPS l'app non ha più bisogno di Drive: ogni modifica
 | Chi | Come entra | Cosa può fare |
 |---|---|---|
 | Manager | email + password | tutto: listino, camere, dati struttura, dipendenti e permessi |
-| Dipendente | link della struttura → sceglie il suo nome → PIN | registrare consumazioni; chiudere conti, cambiare prezzi, camere o dati struttura solo se il manager glielo permette |
+| Dipendente | link della struttura → sceglie il suo nome → PIN | registrare consumazioni; chiudere conti, cambiare prezzi, camere o dati struttura, **esportare dati (CSV e copie)** solo se il manager glielo permette. L'esportazione è sempre spenta finché il manager non la concede |
 
 Il manager crea i dipendenti in **Impostazioni → Dipendenti** (nome, PIN, permessi) e manda loro il **link di accesso** (pulsante *Copia link* o *Condividi*). Cambiare il PIN o disattivare un dipendente lo fa uscire da tutti i dispositivi. **Esci** toglie i dati dal telefono (restano sul server).
 

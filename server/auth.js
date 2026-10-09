@@ -21,9 +21,10 @@ export const PERMISSIONS = {
   editPrices: 'Modificare listino e prezzi',
   editRooms: 'Modificare camere e postazioni',
   editSettings: 'Modificare dati struttura e tariffe di soggiorno',
+  exportData: 'Esportare dati (CSV e copie)',
 };
 /** Permessi predefiniti di un nuovo dipendente. */
-export const DEFAULT_STAFF_PERMS = { closeAccounts: true, editPrices: false, editRooms: false, editSettings: false };
+export const DEFAULT_STAFF_PERMS = { closeAccounts: true, editPrices: false, editRooms: false, editSettings: false, exportData: false };
 
 export function hashSecret(secret) {
   const salt = crypto.randomBytes(16);

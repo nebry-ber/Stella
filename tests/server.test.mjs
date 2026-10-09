@@ -68,6 +68,7 @@ test('manager crea un dipendente; nomi doppi e PIN corti rifiutati', async () =>
   assert.equal(r.status, 200);
   staffId = r.body.staff.id;
   assert.equal(r.body.staff.perms.closeAccounts, false);
+  assert.equal(r.body.staff.perms.exportData, false, 'esportare dati: spento finché il manager non lo concede');
   assert.equal((await manager('POST', '/api/staff', { name: 'anna', pin: '1111' })).status, 409);
 });
 

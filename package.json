@@ -1,7 +1,7 @@
 {
   "name": "stella-consumazioni",
   "private": true,
-  "version": "1.4.3",
+  "version": "1.4.4",
   "type": "module",
   "description": "Registro consumazioni per hotel: PWA offline + server di sincronizzazione",
   "engines": { "node": ">=22.13" },

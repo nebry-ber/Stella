@@ -12,7 +12,7 @@ import * as M from './model.js';
 import * as Sync from './sync.js';
 import * as Admin from './admin.js';
 
-const APP_VERSION = '1.4.3';
+const APP_VERSION = '1.4.4';
 const UNLOCK_MS = 5 * 60 * 1000; // dopo il PIN, impostazioni sbloccate per 5 minuti
 
 const $view = document.getElementById('view');
@@ -523,9 +523,9 @@ async function renderHistory() {
           <div class="list-amt">${euro(a.total)}</div>
         </a></li>`).join('')}
     </ul>` : `<p class="empty">${from > to ? 'La data iniziale è successiva a quella finale.' : 'Nessun conto chiuso nel periodo.'}</p>`}
-    <div class="actions">
+    ${Sync.can('exportData') ? `<div class="actions">
       <button type="button" class="btn btn-secondary" data-action="csv-history" ${accounts.length ? '' : 'disabled'}>Esporta CSV del periodo</button>
-    </div>`;
+    </div>` : ''}`;
 }
 
 async function renderAccount(id) {
@@ -609,6 +609,7 @@ async function renderData() {
 function renderDataServer(canShare) {
   const st = Sync.getState();
   const manager = Sync.user()?.role === 'manager';
+  const canExport = Sync.can('exportData'); // i dipendenti solo con permesso esplicito del manager
   $view.innerHTML = `
     ${exportBanner(false)}
     <section class="card">
@@ -617,25 +618,25 @@ function renderDataServer(canShare) {
       <p class="muted">Modifiche in attesa: <strong data-testid="pending">${st.pending}</strong>${st.lastSyncAt ? ` · ultimo aggiornamento ${M.formatDateTime(st.lastSyncAt)}` : ''}</p>
       <button type="button" class="btn btn-primary btn-block" data-action="sync-now">Sincronizza ora</button>
     </section>
-    <section class="card">
+    ${canExport ? `<section class="card">
       <h2 class="section-title">Esporta CSV per Excel</h2>
       <p>Conti chiusi nel periodo, una riga per consumazione.</p>
       ${rangeForm('csv', ui.csv.from, ui.csv.to)}
       <button type="button" class="btn btn-secondary btn-block" data-action="csv-data">Esporta CSV</button>
     </section>
-    ${manager ? `
     <section class="card">
       <h2 class="section-title">Copia di sicurezza <small>facoltativa</small></h2>
-      <p>Il server fa già un backup ogni notte. Qui puoi scaricare una copia dei dati, o importare un file esportato dalla versione senza server (i dati vengono uniti e inviati al server).</p>
+      <p>Il server fa già un backup ogni notte. Qui puoi scaricare una copia dei dati${manager ? ', o importare un file esportato dalla versione senza server (i dati vengono uniti e inviati al server)' : ''}.</p>
       <button type="button" class="btn btn-secondary btn-block" data-action="export-json">Scarica copia (JSON)</button>
       ${canShare ? '<button type="button" class="btn btn-ghost btn-block" data-action="share-json">Condividi copia…</button>' : ''}
-      <label class="btn btn-ghost btn-block file-btn">Importa un file
-        <input type="file" accept=".json,application/json" data-change="import-file" hidden></label>
-    </section>
-    ${ui.importResult ? importSummaryHtml(ui.importResult) : ''}` : ''}`;
+      ${manager ? `<label class="btn btn-ghost btn-block file-btn">Importa un file
+        <input type="file" accept=".json,application/json" data-change="import-file" hidden></label>` : ''}
+    </section>` : '<p class="muted center">Esportazioni e copie dei dati sono riservate al responsabile.</p>'}
+    ${manager && ui.importResult ? importSummaryHtml(ui.importResult) : ''}`;
 }
 
 async function doExport(share) {
+  if (!requireExport()) return;
   const { payload, fileName } = await S.exportData();
   const json = JSON.stringify(payload);
   if (share) {
@@ -659,6 +660,7 @@ async function doImport(input) {
   const file = input.files && input.files[0];
   input.value = '';
   if (!file) return;
+  if (Sync.isServer() && Sync.user()?.role !== 'manager') { toast('Importare dati è riservato al responsabile.', { kind: 'error' }); return; }
   if (!(await askPin('Serve il PIN per importare dati.'))) return;
   let obj;
   try {
@@ -676,7 +678,14 @@ async function doImport(input) {
   render();
 }
 
+function requireExport() {
+  if (Sync.can('exportData')) return true;
+  toast('Esportare i dati richiede il permesso del responsabile.', { kind: 'error' });
+  return false;
+}
+
 async function doCsv(from, to) {
+  if (!requireExport()) return;
   if (from > to) { toast('La data iniziale è successiva a quella finale.', { kind: 'error' }); return; }
   const r = await S.exportCsv(from, to);
   if (!r.accounts) { toast('Nessun conto chiuso nel periodo.', { kind: 'error' }); return; }
