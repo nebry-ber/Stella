@@ -34,7 +34,7 @@ Serve solo il repository su GitHub: non c'è niente da compilare né da installa
 
 GitHub Pages usa HTTPS, che è necessario per l'installazione e per il funzionamento offline.
 
-**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.4.2'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
+**Pubblicare un aggiornamento:** dopo aver modificato i file, aumenta il numero di versione in `sw.js` (riga `const VERSION = 'v1.4.3'`). Al successivo avvio, i dispositivi mostrano la barra **"È disponibile una nuova versione – Aggiorna"**. Gli aggiornamenti dell'app **non cancellano i dati**.
 
 **Provare in locale** (facoltativo, per chi sviluppa): da questa cartella, con un qualsiasi server statico, ad esempio
 `python3 -m http.server 8000` e poi apri `http://localhost:8000`.
@@ -141,7 +141,7 @@ Il manager crea i dipendenti in **Impostazioni → Dipendenti** (nome, PIN, perm
 
 ### Tre livelli: amministratore, manager, dipendenti
 
-- **Amministratore** (chi gestisce il servizio): entra dalla scheda *Responsabile* e vede il **Pannello di gestione**: elenco strutture con lo stato dell'abbonamento (attivo, in scadenza entro 30 giorni, scaduto, disattivato), creazione di una struttura con il suo manager, logo (compare sulle ricevute), contatti, piano, importo, inizio e scadenza (*Rinnova: +1 anno*), nuove password provvisorie, attivazione/disattivazione.
+- **Amministratore** (chi gestisce il servizio): entra dalla scheda *Responsabile* e vede il **Pannello di gestione**: elenco strutture con lo stato dell'abbonamento (attivo, in scadenza entro 30 giorni, scaduto, disattivato), creazione di una struttura con il suo manager, logo (compare sulle ricevute), contatti, piano, importo, inizio e scadenza (*Rinnova: +1 anno*), correzione di nome ed email di accesso dei manager (pulsante *Modifica*), nuove password provvisorie, attivazione/disattivazione.
 - **Manager** della struttura: riceve dall'amministratore email e **password provvisoria** (messaggio pronto da copiare); al primo accesso l'app gli chiede di sceglierne una personale. Poi gestisce listino, camere, dati della ricevuta, dipendenti e permessi.
 - **Dipendenti**: link della struttura, nome e PIN.
 

@@ -128,7 +128,10 @@ export async function renderList() {
       <ul class="list">${admins.map((a) => `
         <li class="list-item static">
           <div><strong>${H.esc(a.name)}</strong>${a.me ? ' <span class="tag">tu</span>' : ''}${a.mustChange ? ' <span class="tag">password provvisoria</span>' : ''}<div class="muted">${H.esc(a.email)}</div></div>
-          ${a.me ? '' : `<button type="button" class="btn btn-small btn-ghost" data-action="admin-reset" data-id="${H.esc(a.id)}" data-hotel="">Nuova password</button>`}
+          <span class="row-actions">
+            <button type="button" class="btn btn-small btn-ghost" data-action="admin-edit-user" data-id="${H.esc(a.id)}" data-name="${H.esc(a.name)}" data-email="${H.esc(a.email)}" data-hotel="">Modifica</button>
+            ${a.me ? '' : `<button type="button" class="btn btn-small btn-ghost" data-action="admin-reset" data-id="${H.esc(a.id)}" data-hotel="">Nuova password</button>`}
+          </span>
         </li>`).join('')}</ul>
       <button type="button" class="btn btn-secondary btn-block" data-action="admin-new-admin">+ Nuovo amministratore</button>
     </section>`;
@@ -212,7 +215,10 @@ export async function renderHotel(id) {
       <ul class="list">${h.managers.map((m) => `
         <li class="list-item static">
           <div><strong>${H.esc(m.name)}</strong>${m.mustChange ? ' <span class="tag">password provvisoria</span>' : ''}<div class="muted">${H.esc(m.email)}</div></div>
-          <button type="button" class="btn btn-small btn-ghost" data-action="admin-reset" data-id="${H.esc(m.id)}" data-hotel="${H.esc(h.name)}">Nuova password</button>
+          <span class="row-actions">
+            <button type="button" class="btn btn-small btn-ghost" data-action="admin-edit-user" data-id="${H.esc(m.id)}" data-name="${H.esc(m.name)}" data-email="${H.esc(m.email)}" data-hotel="${H.esc(h.name)}">Modifica</button>
+            <button type="button" class="btn btn-small btn-ghost" data-action="admin-reset" data-id="${H.esc(m.id)}" data-hotel="${H.esc(h.name)}">Nuova password</button>
+          </span>
         </li>`).join('') || '<li class="muted">Nessun manager.</li>'}</ul>
       <button type="button" class="btn btn-secondary btn-block" data-action="admin-add-manager" data-id="${H.esc(h.id)}" data-hotel="${H.esc(h.name)}">+ Aggiungi manager</button>
       <p class="muted">Link per i dipendenti: <span class="mono break">${H.esc(staffLink)}</span></p>
@@ -307,6 +313,25 @@ export const actions = {
     if (!r) return;
     const res = await H.api('POST', `admin/hotels/${el.dataset.id}/managers`, { name: r.data.name, email: r.data.email });
     await showCredentials(res.credentials, el.dataset.hotel);
+    H.render();
+  },
+  'admin-edit-user': async (el) => {
+    const r = await H.openModal({
+      title: 'Modifica accesso',
+      html: `
+        <label class="field"><span>Nome</span><input name="name" maxlength="60" autocomplete="off" value="${H.esc(el.dataset.name)}"></label>
+        <label class="field"><span>Email di accesso</span><input name="email" type="email" inputmode="email" autocapitalize="off" autocomplete="off" value="${H.esc(el.dataset.email)}"></label>
+        <label class="check"><input type="checkbox" name="newpass"> Genera anche una nuova password provvisoria (da mandare al nuovo indirizzo)</label>`,
+      buttons: [{ label: 'Annulla', value: 'cancel', cls: 'btn-ghost' }, { label: 'Salva', value: 'ok', cls: 'btn-primary' }],
+      validate: (_v, d) => (!d.name.trim() ? 'Inserisci il nome.' : !M.isEmail(d.email) ? 'Email non valida.' : null),
+    });
+    if (!r) return;
+    await H.api('PATCH', `admin/users/${el.dataset.id}`, { name: r.data.name, email: r.data.email });
+    H.toast('Accesso aggiornato');
+    if (r.data.newpass === 'on') {
+      const res = await H.api('POST', `admin/users/${el.dataset.id}/reset`, {});
+      await showCredentials(res.credentials, el.dataset.hotel);
+    }
     H.render();
   },
   'admin-new-admin': async () => {

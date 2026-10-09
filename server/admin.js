@@ -8,6 +8,7 @@
  *   POST  /api/admin/hotels/:id/logo         logo della struttura (compare sulle ricevute)
  *   POST  /api/admin/hotels/:id/managers     manager aggiuntivo (password provvisoria)
  *   POST  /api/admin/users/:id/reset         nuova password provvisoria (manager o altro amministratore)
+ *   PATCH /api/admin/users/:id               nome ed email di accesso di un manager o amministratore
  *   GET   /api/admin/admins                  amministratori del servizio
  *   POST  /api/admin/admins                  nuovo amministratore con password provvisoria
  *
@@ -187,6 +188,22 @@ export function adminRoutes({ HttpError, requireUser, str }) {
       const h = getHotelRow(ctx.db, ctx.params[0]);
       const credentials = newManager(ctx.db, h.id, ctx.body.name, ctx.body.email);
       return { hotel: hotelOut(ctx.db, h), credentials: { ...credentials, code: h.code } };
+    }],
+
+    ['PATCH', /^\/api\/admin\/users\/([0-9a-f-]{36})$/, (ctx) => {
+      isAdmin(ctx);
+      const u = ctx.db.prepare("SELECT id, name, email FROM users WHERE id = ? AND role IN ('manager', 'admin')").get(ctx.params[0]);
+      if (!u) throw new HttpError(404, 'Utente non trovato.');
+      const name = ctx.body.name !== undefined ? str(ctx.body.name, 60) : u.name;
+      const email = ctx.body.email !== undefined ? str(ctx.body.email, 200).toLowerCase() : u.email;
+      if (!name) throw new HttpError(400, 'Il nome non può essere vuoto.');
+      if (!EMAIL_RE.test(email)) throw new HttpError(400, 'Email non valida.');
+      if (email !== u.email && ctx.db.prepare('SELECT 1 FROM users WHERE email = ? AND id <> ?').get(email, u.id)) {
+        throw new HttpError(409, 'Questa email è già usata da un altro account.');
+      }
+      ctx.db.prepare('UPDATE users SET name = ?, email = ?, updated_at = ? WHERE id = ?').run(name, email, Date.now(), u.id);
+      if (email !== u.email) A.clearFailures(ctx.db, `pwd:${u.email}`);
+      return { user: { id: u.id, name, email } };
     }],
 
     ['GET', /^\/api\/admin\/admins$/, (ctx) => {

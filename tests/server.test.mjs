@@ -218,3 +218,18 @@ test('amministratori: nuovo amministratore con password provvisoria, reset di al
   assert.equal(reset.status, 200);
   assert.equal((await socio('GET', '/api/me')).status, 401);
 });
+
+test('amministratore corregge nome ed email di accesso di un manager', async () => {
+  const admin = client();
+  await admin('POST', '/api/login', { email: 'admin@test.it', password: 'admin-password' });
+  const created = await admin('POST', '/api/admin/hotels', { name: 'Hotel Abete', code: 'abete', managerName: 'Gino', managerEmail: 'sbagliata@abete.test' });
+  const mid = created.body.hotel.managers[0].id;
+  assert.equal((await admin('PATCH', `/api/admin/users/${mid}`, { email: 'mario@test.it' })).status, 409); // già usata
+  assert.equal((await admin('PATCH', `/api/admin/users/${mid}`, { email: 'non-una-mail' })).status, 400);
+  const ok = await admin('PATCH', `/api/admin/users/${mid}`, { name: 'Gino Rossi', email: 'Giusta@Abete.test' });
+  assert.equal(ok.body.user.email, 'giusta@abete.test');
+  const pw = created.body.credentials.password;
+  assert.equal((await client()('POST', '/api/login', { email: 'sbagliata@abete.test', password: pw })).status, 401);
+  assert.equal((await client()('POST', '/api/login', { email: 'giusta@abete.test', password: pw })).status, 200);
+  assert.equal((await manager('PATCH', `/api/admin/users/${mid}`, { email: 'x@y.it' })).status, 403);
+});
